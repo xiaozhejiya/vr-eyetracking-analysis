@@ -316,10 +316,10 @@ def optimize_offset_by_roi(
               + w_inst_enter * E_inst
               + w_kw_enter   * E_kw
               - w_bg_enter   * E_bg
-李
+
         其中 w_* 由 weights 控制。
 
-    返回‘
+    返回
     ----
     dict:
         {
@@ -336,6 +336,9 @@ def optimize_offset_by_roi(
           }
         }
     """
+    # -----------------------------
+    # 1. 处理权重，构造权重向量 w_vec
+    # -----------------------------
     if weights is None:
         weights = {
             "inst_time": 1.0,
@@ -346,64 +349,148 @@ def optimize_offset_by_roi(
             "bg_enter": 0.0,
         }
 
-    w_vec = np.array([
-        weights["inst_time"],
-        weights["kw_time"],
-        -weights["bg_time"],
-        weights["inst_enter"],
-        weights["kw_enter"],
-        -weights["bg_enter"],
-    ], dtype=float).reshape(1, 6)
+    # 按顺序把 6 个特征的权重排成向量：
+    #   [w_inst_time, w_kw_time, -w_bg_time, w_inst_enter, w_kw_enter, -w_bg_enter]
+    # 注意：对 bg_time / bg_enter 带负号，是因为在 score 中是惩罚项（要减去）。
+    # 形状为 (1, 6)，后面便于做广播矩阵乘法。
+    w_vec = np.array(
+        [
+            weights["inst_time"],
+            weights["kw_time"],
+            -weights["bg_time"],   # 惩罚背景时间
+            weights["inst_enter"],
+            weights["kw_enter"],
+            -weights["bg_enter"],  # 惩罚背景进入次数
+        ],
+        dtype=float,
+    ).reshape(1, 6)
 
+    # df 中没有 x/y 或者为空，直接返回一个“无效”结果
     if "x" not in df.columns or "y" not in df.columns or len(df) == 0:
         return {"dx": 0.0, "dy": 0.0, "score": -np.inf, "metrics": {}}
 
-    xs0 = df["x"].to_numpy(dtype=float)
-    ys0 = df["y"].to_numpy(dtype=float)
-    dt = _get_dt(df)
+    # 原始眼动坐标与时间间隔
+    xs0 = df["x"].to_numpy(dtype=float)  # 形状 (N,)
+    ys0 = df["y"].to_numpy(dtype=float)  # 形状 (N,)
+    dt = _get_dt(df)                     # 形状 (N,)
+
+    # 构造 dx / dy 网格
+    # dx_vals: (Dx,), dy_vals: (Dy,)
     dx_vals = np.arange(dx_bounds[0], dx_bounds[1] + 1e-12, step)
     dy_vals = np.arange(dy_bounds[0], dy_bounds[1] + 1e-12, step)
 
+    # -------------------------------------------------------
+    # 2. 一次性构造所有 (dx, dy) 下平移后的坐标张量 xs_adj / ys_adj
+    # -------------------------------------------------------
+    # xs_adj 的形状为 (N, Dx, Dy)：
+    #   - 第 0 维：时间序列上的采样点 i = 0..N-1
+    #   - 第 1 维：不同的 dx 值
+    #   - 第 2 维：不同的 dy 值
+    #
+    # 公式：xs_adj[i, j, k] = clip(xs0[i] + dx_vals[j], 0, 1)
     xs_adj = np.clip(xs0[:, None, None] + dx_vals[None, :, None], 0.0, 1.0)
+
+    # ys_adj 的形状同样为 (N, Dx, Dy)：
+    #   ys_adj[i, j, k] = clip(ys0[i] + dy_vals[k], 0, 1)
     ys_adj = np.clip(ys0[:, None, None] + dy_vals[None, None, :], 0.0, 1.0)
 
+    # -------------------------------------------------------
+    # 3. 根据 ROI 构建 3D 布尔掩码：m_kw / m_inst / m_bg
+    # -------------------------------------------------------
     def build_mask(roi_list):
+        """
+        为一个 ROI 列表构建 mask，返回形状 (N, Dx, Dy) 的布尔数组：
+            m[i, j, k] = True 表示在第 i 个采样点、
+                               平移 (dx_vals[j], dy_vals[k]) 下，
+                               眼动落在 roi_list 任一矩形内。
+        """
         if not roi_list:
-            return np.zeros((xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool)
-        m = np.zeros((xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool)
+            # 如果没有 ROI，直接返回全 False
+            return np.zeros(
+                (xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool
+            )
+
+        # 初始化全 False 的 mask
+        m = np.zeros(
+            (xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool
+        )
+        # 对每一个矩形 ROI 累积 “在此 ROI 内” 的条件
         for _, xmn, ymn, xmx, ymy in roi_list:
+            # 对应条件：
+            #   xmn <= x <= xmx 且 ymn <= y <= ymy
             m |= (xs_adj >= xmn) & (xs_adj <= xmx) & (ys_adj >= ymn) & (ys_adj <= ymy)
         return m
 
+    # 关键词、指令、背景的掩码，形状均为 (N, Dx, Dy)
     m_kw = build_mask(roi_kw)
     m_inst = build_mask(roi_inst)
     m_bg = build_mask(roi_bg)
 
+    # -------------------------------------------------------
+    # 4. 计算每个 (dx, dy) 下的时间特征 T_* 和进入次数特征 E_*
+    # -------------------------------------------------------
+    # 为了和 m_* 广播相乘，把 dt 从 (N,) 扩展到 (N, 1, 1)
+    # 这样 dt3[i, 0, 0] = dt[i]，广播到所有 (Dx, Dy)
     dt3 = dt[:, None, None]
+
+    # 区域内时间：
+    #   t_kw[j, k]   = sum_i dt[i] * 1{(i,j,k) 落在 KW ROI 内}
+    #   t_inst[j, k] = sum_i dt[i] * 1{(i,j,k) 落在 INST ROI 内}
+    #   t_bg[j, k]   = sum_i dt[i] * 1{(i,j,k) 落在 BG ROI 内}
+    #
+    # 计算顺序：
+    #   (dt3 * m_kw) 形状为 (N, Dx, Dy)，沿 axis=0 求和 -> (Dx, Dy)
     t_kw = (dt3 * m_kw).sum(axis=0).astype(float)
     t_inst = (dt3 * m_inst).sum(axis=0).astype(float)
     t_bg = (dt3 * m_bg).sum(axis=0).astype(float)
 
+    # 进入次数（E_*）：
+    # 对时间维（第 0 维）做布尔差分，统计从 False -> True 的次数。
+    # 例如 E_kw[j, k] = |{i >= 1 | ~m_kw[i-1, j, k] & m_kw[i, j, k]}|
     e_kw = ((~m_kw[:-1, :, :]) & m_kw[1:, :, :]).sum(axis=0)
     e_inst = ((~m_inst[:-1, :, :]) & m_inst[1:, :, :]).sum(axis=0)
     e_bg = ((~m_bg[:-1, :, :]) & m_bg[1:, :, :]).sum(axis=0)
 
-    feats = np.stack([
-        t_inst,
-        t_kw,
-        t_bg,
-        e_inst.astype(float),
-        e_kw.astype(float),
-        e_bg.astype(float),
-    ], axis=0)
-    w_b = w_vec.reshape(6, 1, 1)
-    score_mat = (w_b * feats).sum(axis=0)
+    # -------------------------------------------------------
+    # 5. 把所有特征堆叠成 feats，并用权重 w_vec 计算 score 矩阵
+    # -------------------------------------------------------
+    # feats 的形状为 (6, Dx, Dy)，依次存放：
+    #   0: T_inst
+    #   1: T_kw
+    #   2: T_bg
+    #   3: E_inst
+    #   4: E_kw
+    #   5: E_bg
+    feats = np.stack(
+        [
+            t_inst,
+            t_kw,
+            t_bg,
+            e_inst.astype(float),
+            e_kw.astype(float),
+            e_bg.astype(float),
+        ],
+        axis=0,
+    )
 
+    # 将权重向量 reshape 为 (6, 1, 1)，便于与 feats 做逐元素乘法：
+    #   score_mat[j, k] = sum_{c=0..5} w_b[c,0,0] * feats[c, j, k]
+    w_b = w_vec.reshape(6, 1, 1)
+    score_mat = (w_b * feats).sum(axis=0)  # 形状为 (Dx, Dy)
+
+    # -------------------------------------------------------
+    # 6. 找到得分最高的 (dx_idx, dy_idx)，并整理最优结果
+    # -------------------------------------------------------
+    # idx 是一个二元 tuple：(dx_index, dy_index)
     idx = np.unravel_index(np.argmax(score_mat), score_mat.shape)
+
     best = {
+        # 最优平移量
         "dx": float(dx_vals[idx[0]]),
         "dy": float(dy_vals[idx[1]]),
+        # 最优得分
         "score": float(score_mat[idx]),
+        # 对应的各项指标
         "metrics": {
             "inst_time": float(t_inst[idx]),
             "kw_time": float(t_kw[idx]),
@@ -415,6 +502,7 @@ def optimize_offset_by_roi(
     }
 
     return best
+
 
 
 def calibrate_file_by_roi_grid(
