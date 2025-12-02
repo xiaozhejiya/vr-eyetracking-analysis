@@ -11,6 +11,8 @@ import random
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 GROUP_TYPE = "control"
 
@@ -103,6 +105,16 @@ def parse_q_num_from_filename(filename):
     m = re.search(r"q(\d)", filename.lower())
     return int(m.group(1)) if m else 1
 
+def uncalibrated_path_from_calibrated(calibrated_fp):
+    try:
+        group_cal_dir = os.path.basename(os.path.dirname(os.path.dirname(calibrated_fp)))
+        subject = os.path.basename(os.path.dirname(calibrated_fp))
+        group = group_cal_dir.replace("_calibrated", "")
+        filename = os.path.basename(calibrated_fp).replace("_preprocessed_calibrated.csv", "_preprocessed.csv")
+        return data_dir(f"{group}_processed", subject, filename)
+    except Exception:
+        return None
+
 def pick_random_calibrated_file(group_type):
     root = calibration_dir(f"{group_type}_calibrated")
     if not os.path.exists(root):
@@ -145,30 +157,73 @@ def visualize_subject_all_questions_calibrated(group_type):
     folder = pick_random_subject_folder_calibrated(group_type, require_complete=True)
     if not folder:
         return []
-    q_files = list_subject_q_files_calibrated(folder)
-    out_dir = ensure_output_dir()
     analyzer = import_event_analyzer()
-    results = []
-    for q in [1,2,3,4,5]:
-        fp = q_files.get(q)
-        if not fp:
+    q_files = list_subject_q_files_calibrated(folder)
+    qs = [1, 2, 3, 4, 5]
+    fig, axes = plt.subplots(len(qs), 2, figsize=(12, 18), constrained_layout=True)
+
+    def draw_roi_on_axes(ax, w, h, roi_kw, roi_inst, roi_bg):
+        def draw_rois(roi_list, color, alpha):
+            for rn, xmn, ymn, xmx, ymy in roi_list:
+                x1 = xmn * w
+                x2 = xmx * w
+                y_top = (1 - ymn) * h
+                y_bot = (1 - ymy) * h
+                y = min(y_top, y_bot)
+                height = abs(y_top - y_bot)
+                rect = Rectangle((x1, y), x2 - x1, height, linewidth=2,
+                                 edgecolor=(color[0] / 255, color[1] / 255, color[2] / 255, 1.0),
+                                 facecolor=(color[0] / 255, color[1] / 255, color[2] / 255, alpha / 255))
+                ax.add_patch(rect)
+        draw_rois(roi_bg, (0, 128, 255), 60)
+        draw_rois(roi_inst, (255, 165, 0), 80)
+        draw_rois(roi_kw, (255, 0, 0), 100)
+
+    def draw_trajectory_on_axes(ax, w, h, df, point_size=8, line_width=2):
+        xs = df["x"].to_numpy()
+        ys = df["y"].to_numpy()
+        xp = xs * w
+        yp = (1 - ys) * h
+        ax.plot(xp, yp, color=(50 / 255, 200 / 255, 120 / 255, 0.7), linewidth=line_width)
+        ax.scatter(xp, yp, s=point_size, color=(0, 0, 1, 0.6))
+        if len(xp):
+            ax.scatter([xp[0]], [yp[0]], s=30, color=(0, 1, 0, 0.9))
+            ax.scatter([xp[-1]], [yp[-1]], s=30, color=(1, 0, 0, 0.9))
+
+    for i, q in enumerate(qs):
+        fp_cal = q_files.get(q)
+        if not fp_cal:
             continue
-        df = pd.read_csv(fp)
-        if "x" not in df.columns or "y" not in df.columns or len(df) == 0:
-            continue
+        fp_uncal = uncalibrated_path_from_calibrated(fp_cal)
+        df_cal = pd.read_csv(fp_cal) if os.path.exists(fp_cal) else None
+        df_uncal = pd.read_csv(fp_uncal) if fp_uncal and os.path.exists(fp_uncal) else None
         img = load_background_image(q)
         if img is None:
             continue
+        w, h = img.size
         kw, inst, bg = analyzer.get_roi_def(f"n2q{q}")
-        roi_layer = draw_roi_layer(img, kw, inst, bg)
-        traj_layer = draw_trajectory_on_image(img, df)
-        combined = Image.alpha_composite(img.convert("RGBA"), roi_layer)
-        combined = Image.alpha_composite(combined, traj_layer).convert("RGB")
-        out_name = f"calibrated_trajectory_{group_type}_Q{q}_{os.path.basename(fp).replace('.csv','')}.png"
-        out_path = os.path.join(out_dir, out_name)
-        combined.save(out_path)
-        results.append(out_path)
-    return results
+        # Uncalibrated (left)
+        ax_l = axes[i][0]
+        ax_l.imshow(img)
+        draw_roi_on_axes(ax_l, w, h, kw, inst, bg)
+        if df_uncal is not None and "x" in df_uncal.columns and "y" in df_uncal.columns and len(df_uncal) > 0:
+            draw_trajectory_on_axes(ax_l, w, h, df_uncal)
+        ax_l.set_xlim(0, w)
+        ax_l.set_ylim(h, 0)
+        ax_l.set_title(f"Uncalibrated Q{q}")
+        ax_l.axis("off")
+        # Calibrated (right)
+        ax_r = axes[i][1]
+        ax_r.imshow(img)
+        draw_roi_on_axes(ax_r, w, h, kw, inst, bg)
+        if df_cal is not None and "x" in df_cal.columns and "y" in df_cal.columns and len(df_cal) > 0:
+            draw_trajectory_on_axes(ax_r, w, h, df_cal)
+        ax_r.set_xlim(0, w)
+        ax_r.set_ylim(h, 0)
+        ax_r.set_title(f"Calibrated Q{q}")
+        ax_r.axis("off")
+    fig.suptitle(f"{group_type} subject: Uncalibrated vs Calibrated", fontsize=14)
+    return []
 
 def visualize_random_calibrated(group_type):
     fp = pick_random_calibrated_file(group_type)
@@ -194,10 +249,8 @@ def visualize_random_calibrated(group_type):
     return out_path
 
 def main():
-    bg_paths = visualize_five_backgrounds()
-    traj_paths = visualize_subject_all_questions_calibrated(GROUP_TYPE)
-    print("ROI backgrounds:", bg_paths)
-    print("Calibrated subject trajectories:", traj_paths)
+    visualize_subject_all_questions_calibrated(GROUP_TYPE)
+    plt.show()
 
 if __name__ == "__main__":
     main()
