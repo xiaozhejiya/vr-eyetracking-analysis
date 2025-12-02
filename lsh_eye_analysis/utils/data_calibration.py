@@ -525,7 +525,7 @@ if __name__ == "__main__":
     parser.add_argument("--dx-max", type=float, default=0.25)
     parser.add_argument("--dy-min", type=float, default=-0.25)
     parser.add_argument("--dy-max", type=float, default=0.25)
-    parser.add_argument("--step", type=float, default=0.01)
+    parser.add_argument("--step", type=float, default=0.005)
     parser.add_argument(
         "--weights",
         type=str,
