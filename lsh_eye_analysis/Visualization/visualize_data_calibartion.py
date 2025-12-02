@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-GROUP_TYPE = "control"
+GROUP_TYPE = "ad"
 
 def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
