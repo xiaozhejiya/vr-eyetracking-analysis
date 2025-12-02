@@ -316,10 +316,10 @@ def optimize_offset_by_roi(
               + w_inst_enter * E_inst
               + w_kw_enter   * E_kw
               - w_bg_enter   * E_bg
-
+李
         其中 w_* 由 weights 控制。
 
-    返回
+    返回‘
     ----
     dict:
         {
@@ -346,64 +346,73 @@ def optimize_offset_by_roi(
             "bg_enter": 0.0,
         }
 
+    w_vec = np.array([
+        weights["inst_time"],
+        weights["kw_time"],
+        -weights["bg_time"],
+        weights["inst_enter"],
+        weights["kw_enter"],
+        -weights["bg_enter"],
+    ], dtype=float).reshape(1, 6)
+
     if "x" not in df.columns or "y" not in df.columns or len(df) == 0:
         return {"dx": 0.0, "dy": 0.0, "score": -np.inf, "metrics": {}}
 
     xs0 = df["x"].to_numpy(dtype=float)
     ys0 = df["y"].to_numpy(dtype=float)
     dt = _get_dt(df)
-
-    # 记录搜索到的最优结果
-    best = {"dx": 0.0, "dy": 0.0, "score": -np.inf, "metrics": {}}
-
-    # 构建 dx, dy 的网格
     dx_vals = np.arange(dx_bounds[0], dx_bounds[1] + 1e-12, step)
     dy_vals = np.arange(dy_bounds[0], dy_bounds[1] + 1e-12, step)
 
-    for dx in dx_vals:
-        for dy in dy_vals:
-            # 对当前 (dx, dy) 进行平移并裁剪
-            xs = np.clip(xs0 + dx, 0.0, 1.0)
-            ys = np.clip(ys0 + dy, 0.0, 1.0)
+    xs_adj = np.clip(xs0[:, None, None] + dx_vals[None, :, None], 0.0, 1.0)
+    ys_adj = np.clip(ys0[:, None, None] + dy_vals[None, None, :], 0.0, 1.0)
 
-            # 计算每个 ROI 的掩码
-            m_kw = _in_any_roi(xs, ys, roi_kw)
-            m_inst = _in_any_roi(xs, ys, roi_inst)
-            m_bg = _in_any_roi(xs, ys, roi_bg)
+    def build_mask(roi_list):
+        if not roi_list:
+            return np.zeros((xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool)
+        m = np.zeros((xs_adj.shape[0], xs_adj.shape[1], ys_adj.shape[2]), dtype=bool)
+        for _, xmn, ymn, xmx, ymy in roi_list:
+            m |= (xs_adj >= xmn) & (xs_adj <= xmx) & (ys_adj >= ymn) & (ys_adj <= ymy)
+        return m
 
-            # 各区域总时间（单位与 dt 一致）
-            t_kw = float(np.sum(dt[m_kw])) if len(dt) else 0.0
-            t_inst = float(np.sum(dt[m_inst])) if len(dt) else 0.0
-            t_bg = float(np.sum(dt[m_bg])) if len(dt) else 0.0
+    m_kw = build_mask(roi_kw)
+    m_inst = build_mask(roi_inst)
+    m_bg = build_mask(roi_bg)
 
-            # 各区域进入次数
-            e_kw = _enter_count(m_kw)
-            e_inst = _enter_count(m_inst)
-            e_bg = _enter_count(m_bg)
+    dt3 = dt[:, None, None]
+    t_kw = (dt3 * m_kw).sum(axis=0).astype(float)
+    t_inst = (dt3 * m_inst).sum(axis=0).astype(float)
+    t_bg = (dt3 * m_bg).sum(axis=0).astype(float)
 
-            # 按前面给出的目标函数公式加权求和
-            score = (
-                weights["inst_time"] * t_inst
-                + weights["kw_time"] * t_kw
-                - weights["bg_time"] * t_bg
-                + weights["inst_enter"] * e_inst
-                + weights["kw_enter"] * e_kw
-                - weights["bg_enter"] * e_bg
-            )
+    e_kw = ((~m_kw[:-1, :, :]) & m_kw[1:, :, :]).sum(axis=0)
+    e_inst = ((~m_inst[:-1, :, :]) & m_inst[1:, :, :]).sum(axis=0)
+    e_bg = ((~m_bg[:-1, :, :]) & m_bg[1:, :, :]).sum(axis=0)
 
-            # 更新最优解
-            if score > best["score"]:
-                best["dx"] = float(dx)
-                best["dy"] = float(dy)
-                best["score"] = float(score)
-                best["metrics"] = {
-                    "inst_time": t_inst,
-                    "kw_time": t_kw,
-                    "bg_time": t_bg,
-                    "inst_enter": int(e_inst),
-                    "kw_enter": int(e_kw),
-                    "bg_enter": int(e_bg),
-                }
+    feats = np.stack([
+        t_inst,
+        t_kw,
+        t_bg,
+        e_inst.astype(float),
+        e_kw.astype(float),
+        e_bg.astype(float),
+    ], axis=0)
+    w_b = w_vec.reshape(6, 1, 1)
+    score_mat = (w_b * feats).sum(axis=0)
+
+    idx = np.unravel_index(np.argmax(score_mat), score_mat.shape)
+    best = {
+        "dx": float(dx_vals[idx[0]]),
+        "dy": float(dy_vals[idx[1]]),
+        "score": float(score_mat[idx]),
+        "metrics": {
+            "inst_time": float(t_inst[idx]),
+            "kw_time": float(t_kw[idx]),
+            "bg_time": float(t_bg[idx]),
+            "inst_enter": int(e_inst[idx]),
+            "kw_enter": int(e_kw[idx]),
+            "bg_enter": int(e_bg[idx]),
+        },
+    }
 
     return best
 
