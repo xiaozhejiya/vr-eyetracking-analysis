@@ -25,12 +25,16 @@ def calibration_output_path(file_path):
     except ValueError:
         rel = None
     group = None
+    subject = None
     if rel:
         parts = rel.split(os.sep)
-        if len(parts) >= 1 and parts[0].endswith("_processed"):
+        if len(parts) >= 2 and parts[0].endswith("_processed"):
             group = parts[0].replace("_processed", "")
+            subject = parts[1]
     if group:
-        out_dir = os.path.join(calibration_output_dir(), group)
+        out_dir = os.path.join(calibration_output_dir(), f"{group}_calibrated")
+        if subject:
+            out_dir = os.path.join(out_dir, subject)
     else:
         out_dir = calibration_output_dir()
     os.makedirs(out_dir, exist_ok=True)
