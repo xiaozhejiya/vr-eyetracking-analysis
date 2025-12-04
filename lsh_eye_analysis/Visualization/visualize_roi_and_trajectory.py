@@ -13,6 +13,8 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
 GROUP_TYPE = "control"
+# 临时指定受试者文件夹名称；置为 None 则随机
+SUBJECT_FOLDER_NAME = "control_group_21"
 
 def project_root():
     """返回项目根目录的绝对路径，用于构造数据与模块的查找路径"""
@@ -145,7 +147,8 @@ def visualize_subject_all_questions(group_type):
     """为选定组中随机选择的受试者，依次绘制 Q1–Q5 的轨迹叠加 ROI。
     返回输出文件路径列表。仅处理含 `x,y` 列且非空的 CSV。
     """
-    folder = pick_random_subject_folder(group_type, require_complete=True)
+    # folder = pick_random_subject_folder(group_type, require_complete=True)
+    folder = os.path.join(data_dir(f"{group_type}_processed"), str(SUBJECT_FOLDER_NAME)) if SUBJECT_FOLDER_NAME else pick_random_subject_folder(group_type, require_complete=True)
     if not folder:
         return []
     q_files = list_subject_q_files(folder)
