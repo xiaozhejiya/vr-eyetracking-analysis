@@ -473,10 +473,12 @@ def optimize_offset_by_roi(
         axis=0,
     )
 
-    # 将权重向量 reshape 为 (6, 1, 1)，便于与 feats 做逐元素乘法：
-    #   score_mat[j, k] = sum_{c=0..5} w_b[c,0,0] * feats[c, j, k]
-    w_b = w_vec.reshape(6, 1, 1)
-    score_mat = (w_b * feats).sum(axis=0)  # 形状为 (Dx, Dy)
+    time_feats = feats[:3]
+    w_time = np.array([w_vec[0, 0], w_vec[0, 1], -w_vec[0, 2]], dtype=float).reshape(3, 1, 1)
+    num = (w_time[:2] * time_feats[:2]).sum(axis=0)
+    denom = num + (w_time[2] * time_feats[2])
+    time_ratio_mat = np.where(denom > 1e-12, num / denom, 0.0)
+    score_mat = time_ratio_mat
 
     # -------------------------------------------------------
     # 6. 找到得分最高的 (dx_idx, dy_idx)，并整理最优结果
@@ -492,13 +494,14 @@ def optimize_offset_by_roi(
         "score": float(score_mat[idx]),
         # 对应的各项指标
         "metrics": {
-            "inst_time": float(t_inst[idx]),
-            "kw_time": float(t_kw[idx]),
-            "bg_time": float(t_bg[idx]),
-            "inst_enter": int(e_inst[idx]),
-            "kw_enter": int(e_kw[idx]),
-            "bg_enter": int(e_bg[idx]),
-        },
+                "inst_time": float(t_inst[idx]),
+                "kw_time": float(t_kw[idx]),
+                "bg_time": float(t_bg[idx]),
+                "time_ratio": float(time_ratio_mat[idx]),
+                "inst_enter": int(e_inst[idx]),
+                "kw_enter": int(e_kw[idx]),
+                "bg_enter": int(e_bg[idx]),
+            },
     }
 
     return best
@@ -597,6 +600,66 @@ def calibrate_subject_folder(
     return results
 
 
+def summarize_groups_score_speed(
+    groups,
+    dx_bounds=(-0.05, 0.05),
+    dy_bounds=(-0.05, 0.05),
+    step=0.005,
+    weights=None,
+    output_csv=None,
+):
+    import time
+    analyzer = import_event_analyzer()
+    rows = []
+    for g in groups:
+        folders = list_subject_folders(g)
+        scores_q = {1: [], 2: [], 3: [], 4: [], 5: []}
+        proc_ms_q = {1: [], 2: [], 3: [], 4: [], 5: []}
+        for folder in folders:
+            for name in os.listdir(folder):
+                if name.endswith("_preprocessed.csv"):
+                    q = parse_q_num_from_filename(name)
+                    if q not in (1, 2, 3, 4, 5):
+                        continue
+                    fp = os.path.join(folder, name)
+                    t0 = time.perf_counter()
+                    res = calibrate_file_by_roi_grid(
+                        fp,
+                        dx_bounds=dx_bounds,
+                        dy_bounds=dy_bounds,
+                        step=step,
+                        weights=weights,
+                        apply=False,
+                    )
+                    t1 = time.perf_counter()
+                    proc_ms_q[q].append(float((t1 - t0) * 1000.0))
+                    if res and res.get("best"):
+                        scores_q[q].append(float(res["best"]["score"]))
+        row = {
+            "group": g,
+            "avg_score_q1": float(np.mean(scores_q[1])) if len(scores_q[1]) else float("nan"),
+            "avg_score_q2": float(np.mean(scores_q[2])) if len(scores_q[2]) else float("nan"),
+            "avg_score_q3": float(np.mean(scores_q[3])) if len(scores_q[3]) else float("nan"),
+            "avg_score_q4": float(np.mean(scores_q[4])) if len(scores_q[4]) else float("nan"),
+            "avg_score_q5": float(np.mean(scores_q[5])) if len(scores_q[5]) else float("nan"),
+            "avg_proc_ms_q1": float(np.mean(proc_ms_q[1])) if len(proc_ms_q[1]) else float("nan"),
+            "avg_proc_ms_q2": float(np.mean(proc_ms_q[2])) if len(proc_ms_q[2]) else float("nan"),
+            "avg_proc_ms_q3": float(np.mean(proc_ms_q[3])) if len(proc_ms_q[3]) else float("nan"),
+            "avg_proc_ms_q4": float(np.mean(proc_ms_q[4])) if len(proc_ms_q[4]) else float("nan"),
+            "avg_proc_ms_q5": float(np.mean(proc_ms_q[5])) if len(proc_ms_q[5]) else float("nan"),
+        }
+        rows.append(row)
+    df_out = pd.DataFrame(rows)
+    if output_csv is None:
+        output_csv = os.path.join(calibration_output_dir(), "score_proc_summary.csv")
+    try:
+        os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+        df_out.to_csv(output_csv, index=False)
+    except Exception:
+        pass
+    return output_csv, df_out
+
+
 if __name__ == "__main__":
     import argparse
     import json
@@ -632,6 +695,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-apply", action="store_true", help="do not write calibrated CSVs"
     )
+    parser.add_argument(
+        "--summary-score-speed", action="store_true",
+        help="summarize per-group per-question (Q1–Q5) average score and processing time (ms) and write CSV"
+    )
+    parser.add_argument(
+        "--summary-csv", type=str, default=None,
+        help="output CSV path for summary (default: lsh_eye_analysis/data_calibartion/score_speed_summary.csv)"
+    )
     args = parser.parse_args()
 
     # 是否写入校准结果
@@ -650,7 +721,19 @@ if __name__ == "__main__":
     #   2) 若指定 --file，则只处理一个文件
     #   3) 若指定 --groups，则对多个 group 批量处理
     #   4) 否则，对 GROUP_TYPES_DEFAULT 中所有 group 进行处理
-    if args.folder:
+    if getattr(args, "summary_score_speed", False):
+        groups = [s.strip() for s in args.groups.split(",") if s.strip()] if args.groups else GROUP_TYPES_DEFAULT
+        out_path, df_out = summarize_groups_score_speed(
+            groups,
+            dx_bounds=(args.dx_min, args.dx_max),
+            dy_bounds=(args.dy_min, args.dy_max),
+            step=args.step,
+            weights=weights_obj,
+            output_csv=args.summary_csv,
+        )
+        print(out_path)
+        print(df_out.to_string(index=False))
+    elif args.folder:
         result = calibrate_subject_folder(
             args.folder,
             dx_bounds=(args.dx_min, args.dx_max),
