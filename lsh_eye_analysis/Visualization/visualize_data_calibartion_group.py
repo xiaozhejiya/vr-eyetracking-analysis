@@ -10,9 +10,10 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import random
 from matplotlib.patches import Rectangle
 
-GROUP_TYPES = ["control", "ad", "mci"]
+GROUP_TYPES = ["control", "ad", "ci"]
 
 def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
