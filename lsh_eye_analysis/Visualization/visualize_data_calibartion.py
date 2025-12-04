@@ -21,7 +21,7 @@ def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def calibration_dir(*parts):
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibartion", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration", *parts)
 
 def data_dir(*parts):
     return os.path.join(project_root(), "data", *parts)
@@ -283,7 +283,9 @@ def pick_random_subject_folder_calibrated(group_type, require_complete=True):
 def visualize_subject_all_questions_calibrated(group_type, roi_type="hard"):
     folder = pick_random_subject_folder_calibrated(group_type, require_complete=True)
     if not folder:
+        print(f"Error: No calibrated subject folder found for group '{group_type}'.")
         return []
+    print(f"Visualizing subject folder: {folder}")
     analyzer = import_event_analyzer()
     q_files = list_subject_q_files_calibrated(folder)
     qs = [1, 2, 3, 4, 5]
@@ -291,81 +293,15 @@ def visualize_subject_all_questions_calibrated(group_type, roi_type="hard"):
 
     def draw_roi_on_axes(ax, w, h, roi_kw, roi_inst, roi_bg):
         if roi_type == "soft":
-            # Use matplotlib imshow for soft maps
-            map_inst = build_soft_map_for_roi_list(w, h, roi_inst, k=40.0)
-            map_kw   = build_soft_map_for_roi_list(w, h, roi_kw,   k=40.0)
-            map_pos = np.clip(map_inst + map_kw, 0.0, 1.0)
-            map_bg  = 1.0 - map_pos
-            
-            # Create RGBA image for overlay
-            rgba = np.zeros((h, w, 4))
-            
-            # Add colors (using same colors as draw_soft_roi_layer but normalized to 0-1)
-            # BG: Blue (0, 128, 255) -> (0, 0.5, 1.0)
-            # Inst: Orange (255, 165, 0) -> (1.0, 0.65, 0)
-            # KW: Red (255, 0, 0) -> (1.0, 0, 0)
-            
-            # We need to blend these layers. A simple additive approach for visualization:
-            # (This is a simplified blending compared to PIL alpha_composite)
-            
-            bg_color = np.array([0, 0.5, 1.0])
-            inst_color = np.array([1.0, 0.65, 0])
-            kw_color = np.array([1.0, 0.0, 0.0])
-            
-            # Base alpha
-            bg_alpha = 0.35  # 90/255
-            inst_alpha = 0.63 # 160/255
-            kw_alpha = 0.78   # 200/255
-            
-            # Accumulate colors weighted by their map values and alphas
-            # Note: This is an approximation for matplotlib display
-            
-            # Initialize with transparent
-            final_img = np.zeros((h, w, 4))
-            
-            # Helper to blend layer on top
-            def blend_layer(base, color, map_val, alpha_max):
-                # alpha for this pixel
-                alpha = map_val[..., None] * alpha_max
-                # color for this pixel
-                rgb = color.reshape(1,1,3)
-                
-                # Standard alpha blending: out = src * alpha + dst * (1 - alpha)
-                src_rgb = rgb
-                dst_rgb = base[..., :3]
-                dst_a = base[..., 3:]
-                
-                out_a = alpha + dst_a * (1 - alpha)
-                # Avoid division by zero
-                mask = out_a > 0
-                out_rgb = np.zeros_like(dst_rgb)
-                
-                # Only calculate where alpha > 0
-                # out_rgb = (src_rgb * alpha + dst_rgb * dst_a * (1 - alpha)) / out_a
-                
-                # Simplified: just overlay "softly" by summing for visual check
-                # Since we want to show the heatmaps.
-                # Let's use imshow extent with alpha maps instead of manual blending for simplicity?
-                # No, manual blending gives better control over "heatmap" look.
-                
-                pass
-
-            # Let's use the PIL function we already wrote to generate the overlay image,
-            # then convert to numpy for matplotlib. This ensures consistency.
+            # 使用已有的 draw_soft_roi_layer 函数生成 PIL 图像（包含热力图效果）
+            # 然后转换为 numpy 数组供 matplotlib 显示
             layer_pil = draw_soft_roi_layer(Image.new("RGB", (w, h)), roi_kw, roi_inst, roi_bg, k=40.0)
             layer_np = np.array(layer_pil) / 255.0
             
-            ax.imshow(layer_np, extent=[0, w, h, 0]) # Note: y-origin is top for images, but we might need check
-            # draw_soft_roi_layer returns an image where (0,0) is top-left.
-            # matplotlib imshow default origin is upper.
-            # But our draw_rois (hard) uses Rectangle with y flipped (1-ymn)*h.
-            # Let's check draw_soft_roi_layer logic:
-            # ys_img = (np.arange(h) + 0.5) / float(h) -> 0..1 top to bottom
-            # ys = 1.0 - ys_img -> 1..0 (bottom is 0 in norm, top is 1 in norm)
-            # ROI ymn is 0 at bottom.
-            # So soft logic matches standard mathematical coordinates (0 bottom), mapped to image (0 top).
-            # So displaying the resulting image with imshow(origin='upper') is correct.
-            
+            # 显示叠加层
+            # draw_soft_roi_layer 生成的图像左上角是 (0,0)
+            # matplotlib 的 imshow 默认也是左上角 (0,0)，这与我们的图像坐标系一致
+            ax.imshow(layer_np, extent=[0, w, h, 0]) 
             return
 
         def draw_rois(roi_list, color, alpha):
