@@ -122,6 +122,7 @@ def calibrate_groups(
     step=0.005,
     weights=None,
     apply=False,
+    score_type="hard",
 ):
     """
     对若干 group 进行批量校准。
@@ -154,6 +155,7 @@ def calibrate_groups(
                 step=step,
                 weights=weights,
                 apply=apply,
+                score_type=score_type,
             )
             results.append({"group": g, "folder": folder, "results": res})
     return results
@@ -179,6 +181,7 @@ def optimize_offset_by_roi(
     dy_bounds=(-0.05, 0.05),
     step=0.005,
     weights=None,
+    score_type="hard",
 ):
     """
     在给定的 dx, dy 网格上搜索最优平移，使得“看指令 / 关键词时间多、看背景时间少”。
@@ -194,6 +197,7 @@ def optimize_offset_by_roi(
         dy_bounds=dy_bounds,
         step=step,
         weights=weights,
+        score_type=score_type,
     )
 
 
@@ -206,6 +210,7 @@ def calibrate_file_by_roi_grid(
     weights=None,
     apply=False,
     save_path=None,
+    score_type="hard",
 ):
     """
     对单个 *_preprocessed.csv 文件进行基于 ROI 的网格平移校准。
@@ -243,6 +248,7 @@ def calibrate_file_by_roi_grid(
         dy_bounds=dy_bounds,
         step=step,
         weights=weights,
+        score_type=score_type,
     )
 
     applied_path = None
@@ -263,6 +269,7 @@ def calibrate_subject_folder(
     step=0.005,
     weights=None,
     apply=False,
+    score_type="hard",
 ):
     """
     对某一被试目录（subject folder）下的所有 *_preprocessed.csv 文件逐个进行校准。
@@ -285,6 +292,7 @@ def calibrate_subject_folder(
                 step=step,
                 weights=weights,
                 apply=apply,
+                score_type=score_type,
             )
             results.append(res)
     return results
@@ -390,6 +398,13 @@ if __name__ == "__main__":
         help="summarize per-group per-question (Q1–Q5) average score and processing time (ms) and write CSV"
     )
     parser.add_argument(
+        "--score-type",
+        type=str,
+        choices=["hard", "soft"],
+        default="soft",
+        help="Score calculation type: 'hard' (rectangular) or 'soft' (sigmoid heatmap). Default: hard"
+    )
+    parser.add_argument(
         "--summary-csv", type=str, default=None,
         help="output CSV path for summary (default: lsh_eye_analysis/data_calibartion/score_speed_summary.csv)"
     )
@@ -431,6 +446,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -442,6 +458,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -454,6 +471,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -465,5 +483,6 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))

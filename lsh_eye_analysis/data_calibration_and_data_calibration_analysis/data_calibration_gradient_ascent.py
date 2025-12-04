@@ -41,7 +41,7 @@ def calibration_output_dir():
     所有校准后 CSV 的统一输出根目录。
     下面还会按 group / subject 再分子目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibartion_gradient_ascent")
+    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration_gradient_ascent")
 
 
 def calibration_output_path(file_path):
@@ -50,7 +50,7 @@ def calibration_output_path(file_path):
 
     - 原文件名 *_preprocessed.csv -> *_preprocessed_calibrated.csv
     - 原文件位于 data/{group}_processed/{subject}/xxx.csv
-      -> 输出到 lsh_eye_analysis/data_calibartion_gradient_ascent/{group}_calibrated/{subject}/xxx_calibrated.csv
+      -> 输出到 lsh_eye_analysis/data_calibration_gradient_ascent/{group}_calibrated/{subject}/xxx_calibrated.csv
 
     如果找不到 group/subject 结构，则直接输出到 calibration_output_dir() 下面。
     """
@@ -126,6 +126,7 @@ def calibrate_groups(
     step=0.005,
     weights=None,
     apply=False,
+    score_type="soft",
 ):
     """
     对若干 group 进行批量校准。
@@ -158,6 +159,7 @@ def calibrate_groups(
                 step=step,
                 weights=weights,
                 apply=apply,
+                score_type=score_type,
             )
             results.append({"group": g, "folder": folder, "results": res})
     return results
@@ -183,6 +185,7 @@ def optimize_offset_by_roi(
     dy_bounds=(-0.05, 0.05),
     step=0.005,          # 保留参数，但梯度版不用 step
     weights=None,
+    score_type="soft",
 ):
     """
     使用 soft ROI + 梯度上升，在连续的 (dx, dy) 空间搜索最优平移，
@@ -320,17 +323,17 @@ def optimize_offset_by_roi(
                 best_dy = dy.item()
 
     # -----------------------------
-    # 4. 使用最优 (dx,dy) 回到 numpy，用“硬 ROI”算 metrics
+    # 4. 使用最优 (dx,dy) 回到 numpy，用指定的 score_type 算 metrics
     # -----------------------------
     
     score, metrics = calculate_score_and_metrics(
-        df, float(best_dx), float(best_dy), roi_kw, roi_inst, weights
+        df, float(best_dx), float(best_dy), roi_kw, roi_inst, weights, score_type=score_type
     )
 
     best = {
         "dx": float(best_dx),
         "dy": float(best_dy),
-        "score": float(best_score),   # soft 版本的最优 score
+        "score": float(score),   # 使用 calculate_score_and_metrics 返回的 score
         "metrics": metrics,
     }
 
@@ -345,6 +348,7 @@ def calibrate_file_by_roi_grid(
     weights=None,
     apply=False,
     save_path=None,
+    score_type="soft",
 ):
     """
     对单个 *_preprocessed.csv 文件进行基于 ROI 的网格平移校准。
@@ -382,6 +386,7 @@ def calibrate_file_by_roi_grid(
         dy_bounds=dy_bounds,
         step=step,
         weights=weights,
+        score_type=score_type,
     )
 
     applied_path = None
@@ -402,6 +407,7 @@ def calibrate_subject_folder(
     step=0.005,
     weights=None,
     apply=False,
+    score_type="soft",
 ):
     """
     对某一被试目录（subject folder）下的所有 *_preprocessed.csv 文件逐个进行校准。
@@ -424,6 +430,7 @@ def calibrate_subject_folder(
                 step=step,
                 weights=weights,
                 apply=apply,
+                score_type=score_type,
             )
             results.append(res)
     return results
@@ -529,8 +536,15 @@ if __name__ == "__main__":
         help="summarize per-group per-question (Q1–Q5) average score and processing time (ms) and write CSV"
     )
     parser.add_argument(
+        "--score-type",
+        type=str,
+        choices=["hard", "soft"],
+        default="soft",
+        help="Score calculation type: 'hard' (rectangular) or 'soft' (sigmoid heatmap). Default: soft"
+    )
+    parser.add_argument(
         "--summary-csv", type=str, default=None,
-        help="output CSV path for summary (default: lsh_eye_analysis/data_calibartion_gradient_ascent/score_speed_summary.csv)"
+        help="output CSV path for summary (default: lsh_eye_analysis/data_calibration_gradient_ascent/score_speed_summary.csv)"
     )
     args = parser.parse_args()
 
@@ -570,6 +584,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -581,6 +596,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -593,6 +609,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -604,5 +621,6 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             apply=apply_flag,
+            score_type=args.score_type,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
