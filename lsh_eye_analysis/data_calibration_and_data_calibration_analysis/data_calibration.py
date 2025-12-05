@@ -305,6 +305,7 @@ def summarize_groups_score_speed(
     step=0.005,
     weights=None,
     output_csv=None,
+    score_type="hard",
 ):
     import time
     analyzer = import_event_analyzer()
@@ -328,6 +329,7 @@ def summarize_groups_score_speed(
                         step=step,
                         weights=weights,
                         apply=False,
+                        score_type=score_type,
                     )
                     t1 = time.perf_counter()
                     proc_ms_q[q].append(float((t1 - t0) * 1000.0))
@@ -379,10 +381,10 @@ if __name__ == "__main__":
         help="comma-separated group types, e.g. control,sci,ad",
     )
     # 默认平移范围设置得比较大，以覆盖较大的系统偏移
-    parser.add_argument("--dx-min", type=float, default=-0.25)
-    parser.add_argument("--dx-max", type=float, default=0.25)
-    parser.add_argument("--dy-min", type=float, default=-0.25)
-    parser.add_argument("--dy-max", type=float, default=0.25)
+    parser.add_argument("--dx-min", type=float, default=-0.35)
+    parser.add_argument("--dx-max", type=float, default=0.35)
+    parser.add_argument("--dy-min", type=float, default=-0.35)
+    parser.add_argument("--dy-max", type=float, default=0.35)
     parser.add_argument("--step", type=float, default=0.005)
     parser.add_argument(
         "--weights",
@@ -402,7 +404,7 @@ if __name__ == "__main__":
         type=str,
         choices=["hard", "soft"],
         default="soft",
-        help="Score calculation type: 'hard' (rectangular) or 'soft' (sigmoid heatmap). Default: hard"
+        help="Score calculation type: 'hard' (rectangular) or 'soft' (sigmoid heatmap). Default: soft"
     )
     parser.add_argument(
         "--summary-csv", type=str, default=None,
@@ -435,6 +437,7 @@ if __name__ == "__main__":
             step=args.step,
             weights=weights_obj,
             output_csv=args.summary_csv,
+            score_type=args.score_type,
         )
         print(out_path)
         print(df_out.to_string(index=False))
