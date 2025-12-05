@@ -14,8 +14,8 @@ import random
 from matplotlib.patches import Rectangle
 
 GROUP_TYPES = ["control", "ad", "mci"]
-DATA_CALIBRATION_DIR_NAME = "data_calibration_mix"
-VISUALIZATION_DIR_NAME = "Data_calibration_visualization_mix"
+DATA_CALIBRATION_DIR_NAME = "data_calibration"
+VISUALIZATION_DIR_NAME = "Data_calibration_visualization"
 
 def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
