@@ -65,7 +65,7 @@ def _sigmoid_np(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def soft_rect_prob(xs, ys, roi_list, k=45.0):
+def soft_rect_prob(xs, ys, roi_list, k=60.0):
     """
     Calculate soft membership probability for points (xs, ys) against a list of ROIs.
     Returns a vector of probabilities of same length as xs.
@@ -109,8 +109,8 @@ def calculate_score_and_metrics(df, dx, dy, roi_kw, roi_inst, weights=None, scor
     
     if score_type == "soft":
         # Soft ROI logic
-        p_kw = soft_rect_prob(xs, ys, roi_kw, k=45.0)
-        p_inst = soft_rect_prob(xs, ys, roi_inst, k=45.0)
+        p_kw = soft_rect_prob(xs, ys, roi_kw, k=60.0)
+        p_inst = soft_rect_prob(xs, ys, roi_inst, k=60.0)
         
         p_pos = np.clip(p_kw + p_inst, 0.0, 1.0)
         p_bg = 1.0 - p_pos
@@ -174,7 +174,7 @@ def calculate_score_grid(df, roi_kw, roi_inst, dx_bounds=(-0.05, 0.05), dy_bound
 
     w_inst = float(weights.get("inst_time", 1.0))
     w_kw = float(weights.get("kw_time", 1.0))
-    w_bg = float(weights.get("bg_time", 0.5))
+    w_bg = float(weights.get("bg_time", 0.7))
 
     if "x" not in df.columns or "y" not in df.columns or len(df) == 0:
         return {"dx": 0.0, "dy": 0.0, "score": -np.inf, "metrics": {}}
