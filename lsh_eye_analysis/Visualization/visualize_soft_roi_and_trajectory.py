@@ -190,7 +190,7 @@ def visualize_five_backgrounds():
         kw, inst, bg = analyzer.get_roi_def(f"n2q{q}")  # 使用 n2q 映射获取 ROI 定义
 
         # 原来是 draw_rect_roi_layer，这里改成 soft 版（背景=inst+kw 的补集）
-        roi_layer = draw_soft_roi_layer(img, kw, inst, bg, k=40.0)
+        roi_layer = draw_soft_roi_layer(img, kw, inst, bg, k=60.0)
 
         combined = Image.alpha_composite(img.convert("RGBA"), roi_layer).convert("RGB")
         out_path = os.path.join(out_dir, f"background_Q{q}_soft_roi.jpg")
