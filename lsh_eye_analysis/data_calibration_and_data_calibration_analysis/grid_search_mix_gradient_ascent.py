@@ -22,6 +22,7 @@ def project_root():
 # Add project root to sys.path to allow imports from lsh_eye_analysis
 sys.path.append(project_root())
 from lsh_eye_analysis.utils.score_function import calculate_score_and_metrics, apply_offset, calculate_score_grid, get_dt
+from lsh_eye_analysis.utils.CosineWarmupDecay import CosineWarmupDecay
 
 
 def import_event_analyzer():
@@ -164,10 +165,23 @@ def optimize_offset_mix(
     dx = torch.nn.Parameter(torch.tensor(best_dx_grid, dtype=torch.float32, device=device))
     dy = torch.nn.Parameter(torch.tensor(best_dy_grid, dtype=torch.float32, device=device))
 
-    # 使用较小的学习率进行微调
-    lr = 0.01
+    # 使用 CosineWarmupDecay 调度器
+    lr = 0.01  # 初始学习率
+    min_lr = 0.0005
     n_steps = 100
+    warmup_step = 10
+    
     optimizer = torch.optim.Adam([dx, dy], lr=lr)
+    
+    scheduler = CosineWarmupDecay(
+        optimizer, 
+        initial_lr=lr, 
+        min_lr=min_lr, 
+        warmup_step=warmup_step, 
+        total_step=n_steps, 
+        multi=0, 
+        print_step=-1
+    )
 
     # Soft ROI 函数 (Torch 版本)
     def soft_prob(xs, ys, roi_list, k=45.0):
@@ -195,8 +209,12 @@ def optimize_offset_mix(
     best_dx_ga = best_dx_grid
     best_dy_ga = best_dy_grid
 
+    no_improve_count = 0
+    patience = 20
+
     for step_idx in range(n_steps):
         optimizer.zero_grad()
+
 
         xs = torch.clamp(x + dx, 0.0, 1.0)
         ys = torch.clamp(y + dy, 0.0, 1.0)
@@ -221,6 +239,7 @@ def optimize_offset_mix(
         loss = -score
         loss.backward()
         optimizer.step()
+        scheduler.step()  # 更新学习率
 
         with torch.no_grad():
             s_val = score.item()
@@ -228,6 +247,13 @@ def optimize_offset_mix(
                 best_score_ga = s_val
                 best_dx_ga = dx.item()
                 best_dy_ga = dy.item()
+                no_improve_count = 0
+            else:
+                no_improve_count += 1
+            
+            if no_improve_count >= patience:
+                print(f"    Early stopping at step {step_idx}: no improvement for {patience} steps.")
+                break
     
     print(f"    GA result: dx={best_dx_ga:.4f}, dy={best_dy_ga:.4f}, score={best_score_ga:.4f}")
 
