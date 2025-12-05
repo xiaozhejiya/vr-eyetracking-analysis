@@ -37,7 +37,7 @@ def calibration_output_dir():
     所有校准后 CSV 的统一输出根目录。
     下面还会按 group / subject 再分子目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibartion")
+    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration")
 
 
 def calibration_output_path(file_path):
@@ -46,7 +46,7 @@ def calibration_output_path(file_path):
 
     - 原文件名 *_preprocessed.csv -> *_preprocessed_calibrated.csv
     - 原文件位于 data/{group}_processed/{subject}/xxx.csv
-      -> 输出到 lsh_eye_analysis/data_calibartion/{group}_calibrated/{subject}/xxx_calibrated.csv
+      -> 输出到 lsh_eye_analysis/data_calibration/{group}_calibrated/{subject}/xxx_calibrated.csv
 
     如果找不到 group/subject 结构，则直接输出到 calibration_output_dir() 下面。
     """
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--summary-csv", type=str, default=None,
-        help="output CSV path for summary (default: lsh_eye_analysis/data_calibartion/score_speed_summary.csv)"
+        help="output CSV path for summary (default: lsh_eye_analysis/data_calibration/score_speed_summary.csv)"
     )
     args = parser.parse_args()
 
