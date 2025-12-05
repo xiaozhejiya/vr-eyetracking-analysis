@@ -1,6 +1,6 @@
 """
 可视化 Q1–Q5 背景图的 ROI，并叠加已校准的眼动轨迹
-- 通过常量 `GROUP_TYPE` 指定组别，从 `lsh_eye_analysis/data_calibartion/{group}_calibrated/{subject_folder}` 读取数据
+- 通过常量 `GROUP_TYPE` 指定组别，从 `lsh_eye_analysis/data_calibration/{group}_calibrated/{subject_folder}` 读取数据
 - ROI 定义来自 `analysis.event_analyzer.EventAnalyzer`
 - 输出文件保存到当前目录下的 `outputs`
 """
