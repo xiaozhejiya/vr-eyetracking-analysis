@@ -13,19 +13,21 @@ import matplotlib.pyplot as plt
 import random
 from matplotlib.patches import Rectangle
 
-GROUP_TYPES = ["control", "ad", "ci"]
+GROUP_TYPES = ["control", "ad", "mci"]
+DATA_CALIBRATION_DIR_NAME = "data_calibration_mix"
+VISUALIZATION_DIR_NAME = "Data_calibration_visualization_mix"
 
 def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def calibration_dir(*parts):
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibartion", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", DATA_CALIBRATION_DIR_NAME, *parts)
 
 def data_dir(*parts):
     return os.path.join(project_root(), "data", *parts)
 
 def visualization_root():
-    return os.path.join(os.path.dirname(__file__), "Data_calibration_visualization")
+    return os.path.join(os.path.dirname(__file__), VISUALIZATION_DIR_NAME)
 
 def import_event_analyzer():
     sys.path.append(project_root())
@@ -172,10 +174,17 @@ def visualize_groups(groups):
     saved = []
     for group_type in groups:
         subjects = list_subject_folders_calibrated(group_type)
+        if not subjects:
+            print(f"Warning: No calibrated subject folders found for group '{group_type}' in {calibration_dir(f'{group_type}_calibrated')}")
+            continue
+        print(f"Found {len(subjects)} subjects for group '{group_type}'. Processing...")
         for folder in subjects:
-            res = visualize_subject_all_questions_calibrated_to_file(group_type, folder)
-            if res:
-                saved.append(res)
+            try:
+                res = visualize_subject_all_questions_calibrated_to_file(group_type, folder)
+                if res:
+                    saved.append(res)
+            except Exception as e:
+                print(f"Error processing folder {folder}: {e}")
     return saved
 
 def main():
