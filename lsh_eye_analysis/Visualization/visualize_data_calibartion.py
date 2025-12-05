@@ -21,7 +21,7 @@ def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def calibration_dir(*parts):
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration_mix", *parts)
 
 def data_dir(*parts):
     return os.path.join(project_root(), "data", *parts)
