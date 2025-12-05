@@ -149,7 +149,7 @@ def optimize_offset_mix(
     # -----------------------------
     w_inst = float(weights.get("inst_time", 1.0))
     w_kw   = float(weights.get("kw_time", 1.0))
-    w_bg   = float(weights.get("bg_time", 0.5))
+    w_bg   = float(weights.get("bg_time", 0.7))
     lambda_reg = float(weights.get("lambda_reg", 0.0))
 
     xs_np = df["x"].to_numpy(dtype=float)
@@ -184,7 +184,7 @@ def optimize_offset_mix(
     )
 
     # Soft ROI 函数 (Torch 版本)
-    def soft_prob(xs, ys, roi_list, k=45.0):
+    def soft_prob(xs, ys, roi_list, k=60.0):
         if not roi_list:
             return torch.zeros_like(xs)
         params = torch.tensor(
@@ -435,11 +435,11 @@ if __name__ == "__main__":
     parser.add_argument("--folder", type=str, help="path to a subject folder")
     parser.add_argument("--groups", type=str, default=None, help="comma-separated groups")
     
-    parser.add_argument("--dx-min", type=float, default=-0.35)
-    parser.add_argument("--dx-max", type=float, default=0.35)
-    parser.add_argument("--dy-min", type=float, default=-0.35)
-    parser.add_argument("--dy-max", type=float, default=0.35)
-    parser.add_argument("--grid-step", type=float, default=0.01, help="Step size for initial grid search")
+    parser.add_argument("--dx-min", type=float, default=-0.45)
+    parser.add_argument("--dx-max", type=float, default=0.45)
+    parser.add_argument("--dy-min", type=float, default=-0.45)
+    parser.add_argument("--dy-max", type=float, default=0.45)
+    parser.add_argument("--grid-step", type=float, default=0.05, help="Step size for initial grid search")
     
     parser.add_argument("--weights", type=str, default=None, help="JSON weights")
     parser.add_argument("--no-apply", action="store_true", help="Do not write output CSVs")

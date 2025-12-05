@@ -381,11 +381,11 @@ if __name__ == "__main__":
         help="comma-separated group types, e.g. control,sci,ad",
     )
     # 默认平移范围设置得比较大，以覆盖较大的系统偏移
-    parser.add_argument("--dx-min", type=float, default=-0.35)
-    parser.add_argument("--dx-max", type=float, default=0.35)
-    parser.add_argument("--dy-min", type=float, default=-0.35)
-    parser.add_argument("--dy-max", type=float, default=0.35)
-    parser.add_argument("--step", type=float, default=0.005)
+    parser.add_argument("--dx-min", type=float, default=-0.45)
+    parser.add_argument("--dx-max", type=float, default=0.45)
+    parser.add_argument("--dy-min", type=float, default=-0.45)
+    parser.add_argument("--dy-max", type=float, default=0.45)
+    parser.add_argument("--step", type=float, default=0.05)
     parser.add_argument(
         "--weights",
         type=str,
