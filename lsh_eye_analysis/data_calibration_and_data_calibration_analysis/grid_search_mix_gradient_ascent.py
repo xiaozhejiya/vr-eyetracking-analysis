@@ -75,7 +75,7 @@ def calibration_output_path(file_path):
 
 
 def data_dir(*parts):
-    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processing", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processed", *parts)
 
 
 def group_root(group):

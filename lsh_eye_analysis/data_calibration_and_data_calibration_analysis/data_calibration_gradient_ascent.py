@@ -91,11 +91,11 @@ def data_dir(*parts):
     """
     默认数据根目录改为 lsh_eye_analysis/data/data_processing。
     例如：
-        data_dir('control_processed') -> <project_root>/lsh_eye_analysis/data/data_processing/control_processed
+        data_dir('control_processed') -> <project_root>/lsh_eye_analysis/data/data_processed/control_processed
 
     参数 *parts 可以是多级子目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processing", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processed", *parts)
 
 
 def group_root(group):
