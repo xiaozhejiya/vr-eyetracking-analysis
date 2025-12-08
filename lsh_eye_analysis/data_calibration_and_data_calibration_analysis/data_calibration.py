@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 # 默认包含的被试分组名称（和 data/ 下面的目录对应）
-GROUP_TYPES_DEFAULT = ["control", "mci", "ad"]
+GROUP_TYPES_DEFAULT = ["control"]
 
 
 def project_root():
@@ -71,11 +71,13 @@ def calibration_output_path(file_path):
             group = parts[0].replace("_processed", "")
             subject = parts[1]
 
-    # 根据 group/subject 组建输出目录
+    # 根据 group/subject 组建输出目录（若 subject 不存在于数据根，则不创建 subject 子目录）
     if group:
         out_dir = os.path.join(calibration_output_dir(), f"{group}_calibrated")
         if subject:
-            out_dir = os.path.join(out_dir, subject)
+            expected_subject_dir = os.path.join(data_dir(f"{group}_processed"), subject)
+            if os.path.isdir(expected_subject_dir):
+                out_dir = os.path.join(out_dir, subject)
     else:
         out_dir = calibration_output_dir()
 

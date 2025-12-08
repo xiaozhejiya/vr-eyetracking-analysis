@@ -66,7 +66,9 @@ def calibration_output_path(file_path):
     if group:
         out_dir = os.path.join(calibration_output_dir(), f"{group}_calibrated")
         if subject:
-            out_dir = os.path.join(out_dir, subject)
+            expected_subject_dir = os.path.join(data_dir(f"{group}_processed"), subject)
+            if os.path.isdir(expected_subject_dir):
+                out_dir = os.path.join(out_dir, subject)
     else:
         out_dir = calibration_output_dir()
 
