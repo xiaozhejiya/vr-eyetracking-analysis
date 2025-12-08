@@ -62,7 +62,7 @@ class CosineWarmupDecay(_LRScheduler):
                 else:
                     lr = self.min_lr
 
-        # 打印 (如果需要)
+        # 打印
         if self.print_step > 0 and current_step % self.print_step == 0:
             print(f"Step {current_step} - Learning rate: {lr:.8f}")
 

@@ -38,7 +38,7 @@ def calibration_output_dir():
     """
     所有校准后 CSV 的统一输出根目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data_calibration_mix")
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_calibration_mix")
 
 
 def calibration_output_path(file_path):
