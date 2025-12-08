@@ -85,12 +85,13 @@ def calibration_output_path(file_path):
 
 def data_dir(*parts):
     """
-    拼接 data/ 子目录的路径，例如：
-        data_dir('control_processed') -> <project_root>/data/control_processed
+    默认数据根目录改为 lsh_eye_analysis/data/data_processing。
+    例如：
+        data_dir('control_processed') -> <project_root>/lsh_eye_analysis/data/data_processing/control_processed
 
     参数 *parts 可以是多级子目录。
     """
-    return os.path.join(project_root(), "data", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processing", *parts)
 
 
 def group_root(group):
@@ -158,6 +159,40 @@ def calibrate_groups(
                 score_type=score_type,
             )
             results.append({"group": g, "folder": folder, "results": res})
+    return results
+
+
+def calibrate_groups_under_dir(
+    parent_dir,
+    groups=None,
+    dx_bounds=(-0.05, 0.05),
+    dy_bounds=(-0.05, 0.05),
+    step=0.005,
+    weights=None,
+    apply=False,
+    score_type="hard",
+):
+    if groups is None:
+        groups = GROUP_TYPES_DEFAULT
+    results = []
+    for g in groups:
+        group_path = os.path.join(parent_dir, f"{g}_processed")
+        if not os.path.exists(group_path):
+            continue
+        for d in os.listdir(group_path):
+            folder_path = os.path.join(group_path, d)
+            if not os.path.isdir(folder_path):
+                continue
+            res = calibrate_subject_folder(
+                folder_path,
+                dx_bounds=dx_bounds,
+                dy_bounds=dy_bounds,
+                step=step,
+                weights=weights,
+                apply=apply,
+                score_type=score_type,
+            )
+            results.append({"group": g, "folder": folder_path, "results": res})
     return results
 
 
@@ -380,6 +415,12 @@ if __name__ == "__main__":
         default=None,
         help="comma-separated group types, e.g. control,sci,ad",
     )
+    parser.add_argument(
+        "--groups-parent",
+        type=str,
+        default=None,
+        help="path to parent dir containing <group>_processed subdirs",
+    )
     # 默认平移范围设置得比较大，以覆盖较大的系统偏移
     parser.add_argument("--dx-min", type=float, default=-0.45)
     parser.add_argument("--dx-max", type=float, default=0.45)
@@ -424,10 +465,11 @@ if __name__ == "__main__":
             weights_obj = None
 
     # 优先级：
-    #   1) 若指定 --folder，则对一个 subject folder 进行处理
-    #   2) 若指定 --file，则只处理一个文件
-    #   3) 若指定 --groups，则对多个 group 批量处理
-    #   4) 否则，对 GROUP_TYPES_DEFAULT 中所有 group 进行处理
+    #   1) 若指定 --groups-parent，则在该目录下按 groups 处理
+    #   2) 若指定 --folder，则对一个 subject folder 进行处理
+    #   3) 若指定 --file，则只处理一个文件
+    #   4) 若指定 --groups，则对多个 group 批量处理
+    #   5) 否则，对 GROUP_TYPES_DEFAULT 中所有 group 进行处理
     if getattr(args, "summary_score_speed", False):
         groups = [s.strip() for s in args.groups.split(",") if s.strip()] if args.groups else GROUP_TYPES_DEFAULT
         out_path, df_out = summarize_groups_score_speed(
@@ -441,6 +483,20 @@ if __name__ == "__main__":
         )
         print(out_path)
         print(df_out.to_string(index=False))
+    elif args.groups_parent:
+        groups = [s.strip() for s in args.groups.split(",") if s.strip()] if args.groups else GROUP_TYPES_DEFAULT
+        result = calibrate_groups_under_dir(
+            args.groups_parent,
+            groups=groups,
+            dx_bounds=(args.dx_min, args.dx_max),
+            dy_bounds=(args.dy_min, args.dy_max),
+            step=args.step,
+            weights=weights_obj,
+            apply=apply_flag,
+            score_type=args.score_type,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
     elif args.folder:
         result = calibrate_subject_folder(
             args.folder,

@@ -75,7 +75,7 @@ def calibration_output_path(file_path):
 
 
 def data_dir(*parts):
-    return os.path.join(project_root(), "data", *parts)
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processing", *parts)
 
 
 def group_root(group):
@@ -365,6 +365,41 @@ def calibrate_groups_mix(
     return results
 
 
+def calibrate_groups_under_dir_mix(
+    parent_dir,
+    groups=None,
+    dx_bounds=(-0.1, 0.1),
+    dy_bounds=(-0.1, 0.1),
+    grid_step=0.01,
+    weights=None,
+    apply=False,
+    score_type="soft",
+):
+    if groups is None:
+        groups = GROUP_TYPES_DEFAULT
+    results = []
+    for g in groups:
+        group_path = os.path.join(parent_dir, f"{g}_processed")
+        if not os.path.exists(group_path):
+            continue
+        for d in os.listdir(group_path):
+            folder_path = os.path.join(group_path, d)
+            if not os.path.isdir(folder_path):
+                continue
+            print(f"=== Processing Group: {g}, Subject: {os.path.basename(folder_path)} ===")
+            res = calibrate_subject_folder_mix(
+                folder_path,
+                dx_bounds=dx_bounds,
+                dy_bounds=dy_bounds,
+                grid_step=grid_step,
+                weights=weights,
+                apply=apply,
+                score_type=score_type,
+            )
+            results.append({"group": g, "folder": folder_path, "results": res})
+    return results
+
+
 def summarize_groups_score_speed_mix(
     groups,
     dx_bounds=(-0.1, 0.1),
@@ -434,6 +469,7 @@ if __name__ == "__main__":
     parser.add_argument("--file", type=str, help="path to a single _preprocessed.csv file")
     parser.add_argument("--folder", type=str, help="path to a subject folder")
     parser.add_argument("--groups", type=str, default=None, help="comma-separated groups")
+    parser.add_argument("--groups-parent", type=str, default=None, help="path to parent dir containing <group>_processed subdirs")
     
     parser.add_argument("--dx-min", type=float, default=-0.45)
     parser.add_argument("--dx-max", type=float, default=0.45)
@@ -467,6 +503,20 @@ if __name__ == "__main__":
         print(out_path)
         print(df_out.to_string(index=False))
     
+    elif args.groups_parent:
+        groups = [s.strip() for s in args.groups.split(",")] if args.groups else GROUP_TYPES_DEFAULT
+        result = calibrate_groups_under_dir_mix(
+            args.groups_parent,
+            groups=groups,
+            dx_bounds=(args.dx_min, args.dx_max),
+            dy_bounds=(args.dy_min, args.dy_max),
+            grid_step=args.grid_step,
+            weights=weights_obj,
+            apply=apply_flag,
+            score_type=args.score_type,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
     elif args.folder:
         result = calibrate_subject_folder_mix(
             args.folder,
