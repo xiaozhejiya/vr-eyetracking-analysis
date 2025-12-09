@@ -13,8 +13,8 @@ from typing import Dict, Tuple, Optional
 from pathlib import Path
 import math
 
-from src.utils.logger import setup_logger
-from src.modules.module05_rqa_analysis.rqa_fast import (
+from utils.logger import setup_logger
+from analysis.rqa_fast import (
     compute_distance_matrix_euclidean,
     compute_distance_matrix_cityblock,
     compute_recurrence_matrix_fast,

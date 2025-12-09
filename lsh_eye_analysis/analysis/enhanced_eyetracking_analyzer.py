@@ -12,6 +12,9 @@ from typing import Dict, List, Tuple, Optional
 import cv2
 from scipy import ndimage
 
+def _project_root():
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 class EnhancedEyetrackingAnalyzer:
     """增强版眼动数据分析器"""
     
@@ -22,7 +25,11 @@ class EnhancedEyetrackingAnalyzer:
         Args:
             config_file: 配置文件路径
         """
-        self.config_file = config_file
+        if not os.path.isabs(config_file):
+            abs_cfg = os.path.join(_project_root(), config_file)
+            self.config_file = abs_cfg if os.path.exists(abs_cfg) else config_file
+        else:
+            self.config_file = config_file
         self.load_config()
         
         # 设置数据路径
