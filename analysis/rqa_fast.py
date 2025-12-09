@@ -206,6 +206,6 @@ def compute_rqa_metrics_fast(RP, lmin):
             if count > 0:
                 p_l = count / total_lines_lmin
                 if p_l > 1e-12:
-                    ENT += -p_l * math.log2(p_l)
+                    ENT += -p_l * np.log2(p_l)
 
     return RR, DET, ENT
