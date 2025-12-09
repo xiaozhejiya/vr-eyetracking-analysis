@@ -341,19 +341,11 @@ def process_directory(input_dir: str, output_dir: str,
 
 def main():
     """主函数 - 用于测试和独立运行"""
-    if validate_config():
-        print("✓ Configuration validation passed")
-        show_config_summary()
-    else:
-        print("✗ Configuration validation failed")
-        return
-    
-    # 示例用法
-    print("\n🔄 VR眼动数据处理器")
+    print("\nVR眼动数据处理器")
     print("=" * 50)
     print("使用示例:")
     print("from data_processing.vr_eyetracking_processor import process_directory")
-    print("process_directory('data/raw', 'data/processed')")
+    print("process_directory('data/data_raw/control_raw/control_group_1', 'data/data_processed/control_processed/control_group_1')")
 
 if __name__ == "__main__":
     main() 
