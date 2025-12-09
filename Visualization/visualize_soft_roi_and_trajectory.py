@@ -19,7 +19,7 @@ def project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 def processed_dir(*parts):
-    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processed", *parts)
+    return os.path.join(project_root(), "data", "data_processed", *parts)
 
 def assets_dir(*parts):
     return os.path.join(project_root(), "data", *parts)

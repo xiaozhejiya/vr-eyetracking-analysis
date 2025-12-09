@@ -11,7 +11,7 @@ def find_files(root, name, ext):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root', default='./lsh_eye_analysis/data/data_calibration')
+    parser.add_argument('--root', default='./data/data_calibration')
     parser.add_argument('--name', default='5_preprocessed_calibrated')
     parser.add_argument('--ext', default='csv')
     parser.add_argument('--dry-run', action='store_true')

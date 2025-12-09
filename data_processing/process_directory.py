@@ -11,35 +11,8 @@ sys.path.append(project_root())
 from data_processing.vr_eyetracking_processor import process_directory
 
 if __name__ == "__main__":
-    if os.environ.get('SYNC_LEGACY_PROCESSED') == '1':
-        legacy_roots = {
-            'mci': r"./data/mci_processed",
-            'control': r"./data/control_processed",
-            'ad': r"./data/ad_processed",
-        }
-        target_roots = {
-            'mci': r"./lsh_eye_analysis/data/data_processed/mci_processed",
-            'control': r"./lsh_eye_analysis/data/data_processed/control_processed",
-            'ad': r"./lsh_eye_analysis/data/data_processed/ad_processed",
-        }
-
-        for group, src in legacy_roots.items():
-            if os.path.exists(src):
-                dst = target_roots[group]
-                for sub in os.listdir(src):
-                    sub_src = os.path.join(src, sub)
-                    if os.path.isdir(sub_src):
-                        sub_dst = os.path.join(dst, sub)
-                        os.makedirs(sub_dst, exist_ok=True)
-                        for f in os.listdir(sub_src):
-                            if f.endswith('.csv'):
-                                shutil.copy2(os.path.join(sub_src, f), os.path.join(sub_dst, f))
-                print(f"synced legacy {group}_processed -> {dst}")
-        print("done syncing legacy processed datasets.")
-        sys.exit(0)
-
-    RAW_ROOT = r"./lsh_eye_analysis/data/data_raw"
-    OUT_ROOT = r"./lsh_eye_analysis/data/data_processed"
+    RAW_ROOT = r"./data/data_raw"
+    OUT_ROOT = r"./data/data_processed"
 
     os.makedirs(OUT_ROOT, exist_ok=True)
 

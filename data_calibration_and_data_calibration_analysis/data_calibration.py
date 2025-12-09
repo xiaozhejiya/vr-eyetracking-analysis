@@ -19,7 +19,7 @@ def project_root():
 
 # Add project root to sys.path to allow imports from lsh_eye_analysis
 sys.path.append(project_root())
-from lsh_eye_analysis.utils.score_function import calculate_score_grid, apply_offset
+from utils.score_function import calculate_score_grid, apply_offset
 
 
 def import_event_analyzer():
@@ -37,7 +37,7 @@ def calibration_output_dir():
     所有校准后 CSV 的统一输出根目录。
     下面还会按 group / subject 再分子目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_calibration")
+    return os.path.join(project_root(), "data", "data_calibration")
 
 
 def calibration_output_path(file_path):
@@ -93,7 +93,7 @@ def data_dir(*parts):
 
     参数 *parts 可以是多级子目录。
     """
-    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processed", *parts)
+    return os.path.join(project_root(), "data", "data_processed", *parts)
 
 
 def group_root(group):

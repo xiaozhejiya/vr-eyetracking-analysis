@@ -17,7 +17,7 @@ from scipy import stats
 # 添加项目根目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import *
-from lsh_eye_analysis.data_processing.custom_vr_parser import parse_custom_vr_format
+from data_processing.custom_vr_parser import parse_custom_vr_format
 
 def parse_new_format(content: str) -> List[Dict]:
     """
