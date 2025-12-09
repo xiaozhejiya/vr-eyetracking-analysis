@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 # 默认包含的被试分组名称（和 data/ 下面的目录对应）
-GROUP_TYPES_DEFAULT = ["control"]
+GROUP_TYPES_DEFAULT = ["control", "mci", "ad"]
 
 
 def project_root():
