@@ -17,6 +17,7 @@ from scipy import stats
 # 添加项目根目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import *
+from lsh_eye_analysis.data_processing.custom_vr_parser import parse_custom_vr_format
 
 def parse_new_format(content: str) -> List[Dict]:
     """
@@ -168,8 +169,10 @@ def process_txt_file(input_file: str, output_file: str) -> bool:
         with open(input_file, 'r', encoding=INPUT_ENCODING) as f:
             content = f.read()
         
-        # 解析数据
+        # 解析数据（优先尝试新格式，不匹配则回退到自定义格式）
         records = parse_new_format(content)
+        if not records:
+            records = parse_custom_vr_format(content)
         print(f"  解析到 {len(records)} 条记录.")
         
         if not records:
@@ -188,27 +191,64 @@ def process_txt_file(input_file: str, output_file: str) -> bool:
             print("  ⚠️  预处理后数据为空")
             return False
         
-        # 添加时间校准所需的milliseconds列
-        # 检查timestamp列是否包含大的毫秒值（原始格式）或小的相对秒值（新格式）
-        if 'timestamp' in df.columns:
-            max_timestamp = df['timestamp'].max()
-            if max_timestamp < 10000:  # 如果最大值小于10000，认为是相对秒值
-                print("  🕐 检测到相对时间戳，转换为毫秒时间戳")
-                import time
-                current_time_ms = int(time.time() * 1000)  # 当前时间的毫秒时间戳
-                df['milliseconds'] = current_time_ms + (df['timestamp'] * 1000).astype(int)
-            else:
-                print("  🕐 检测到毫秒时间戳，直接使用")
-                df['milliseconds'] = df['timestamp'].astype(int)
+        # 添加时间校准所需的milliseconds列（若自定义解析已提供则直接使用）
+        if 'milliseconds' in df.columns:
+            print("  🕐 使用已有milliseconds列")
         else:
-            print("  ⚠️  未找到timestamp列，创建默认milliseconds列")
-            import time
-            current_time_ms = int(time.time() * 1000)
-            df['milliseconds'] = current_time_ms + (df.index * 100)  # 假设100ms间隔
+            # 检查timestamp列是否包含大的毫秒值（原始格式）或小的相对秒值（新格式）
+            if 'timestamp' in df.columns:
+                max_timestamp = df['timestamp'].max()
+                if max_timestamp < 10000:  # 如果最大值小于10000，认为是相对秒值
+                    print("  🕐 检测到相对时间戳，转换为毫秒时间戳")
+                    import time
+                    current_time_ms = int(time.time() * 1000)  # 当前时间的毫秒时间戳
+                    df['milliseconds'] = current_time_ms + (df['timestamp'] * 1000).astype(int)
+                else:
+                    print("  🕐 检测到毫秒时间戳，直接使用")
+                    df['milliseconds'] = df['timestamp'].astype(int)
+            else:
+                print("  ⚠️  未找到timestamp列，创建默认milliseconds列")
+                import time
+                current_time_ms = int(time.time() * 1000)
+                df['milliseconds'] = current_time_ms + (df.index * 100)  # 假设100ms间隔
         
         print(f"  📋 最终列结构: {list(df.columns)}")
         print(f"  🕐 milliseconds范围: {df['milliseconds'].min()} ~ {df['milliseconds'].max()}")
         
+        # 补充缺失列以统一输出结构
+        if 'z' not in df.columns:
+            df['z'] = 0.0
+        if 'abs_datetime' not in df.columns:
+            try:
+                if 'milliseconds' in df.columns:
+                    dt_series = pd.to_datetime(df['milliseconds'], unit='ms')
+                    df['abs_datetime'] = dt_series.dt.strftime('%Y-%m-%d %H:%M:%S.%f').str[:-3]
+                elif 'timestamp' in df.columns:
+                    base_dt = pd.Timestamp(datetime.now())
+                    dt_series = base_dt + pd.to_timedelta(df['timestamp'], unit='s')
+                    df['abs_datetime'] = dt_series.dt.strftime('%Y-%m-%d %H:%M:%S.%f').str[:-3]
+            except Exception:
+                pass
+
+        # 对齐旧处理格式：补充角度差值、角度距离与平均速度列
+        if 'x_deg' in df.columns and 'y_deg' in df.columns:
+            df['x_deg_diff'] = df['x_deg'].diff().fillna(0)
+            df['y_deg_diff'] = df['y_deg'].diff().fillna(0)
+            df['dist_deg'] = np.sqrt(df['x_deg_diff']**2 + df['y_deg_diff']**2)
+        if 'velocity_deg_s' in df.columns:
+            df['avg_velocity_deg_s'] = df['velocity_deg_s'].mean()
+
+        # 重新排列列顺序以尽量匹配旧版mci_processed结构
+        target_columns = [
+            'x', 'y', 'z', 'abs_datetime', 'milliseconds', 'time_diff',
+            'x_deg', 'y_deg', 'x_deg_diff', 'y_deg_diff', 'dist_deg',
+            'velocity_deg_s', 'avg_velocity_deg_s'
+        ]
+        existing = [c for c in target_columns if c in df.columns]
+        # 只有在存在至少核心列时才重排，以免丢失信息
+        if len(existing) >= 6:  # 粗略保障
+            df = df[existing]
+
         # 保存结果
         df.to_csv(output_file, index=False, encoding=OUTPUT_ENCODING)
         print(f"\n最终记录数= {len(df)}")
@@ -261,9 +301,16 @@ def process_directory(input_dir: str, output_dir: str,
     for txt_file in tqdm(txt_files, desc="处理文件"):
         input_path = os.path.join(input_dir, txt_file)
         
-        # 生成输出文件名
+        # 生成输出文件名（支持 group+q 命名格式，如 ad3q1_preprocessed.csv）
         base_name = os.path.splitext(txt_file)[0]
-        output_filename = f"{file_prefix}{base_name}{file_suffix}.csv"
+        output_filename = None
+        if file_prefix and file_prefix.endswith('q'):
+            m = re.search(r'(\d)', base_name)
+            if m:
+                q = m.group(1)
+                output_filename = f"{file_prefix}{q}{file_suffix}.csv"
+        if not output_filename:
+            output_filename = f"{file_prefix}{base_name}{file_suffix}.csv"
         output_path = os.path.join(output_dir, output_filename)
         
         print(f"\n=== 处理: {input_path} ===")

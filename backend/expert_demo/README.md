@@ -1,1 +1,0 @@
-﻿README for expert demo
