@@ -84,6 +84,13 @@ class Config:
     # 必需的列
     REQUIRED_COLUMNS = ['x', 'y', 'time']
 
+    # ==================== 预处理器参数 ====================
+    PREPROCESS_INPUT_ENCODING = 'utf-8'
+    PREPROCESS_OUTPUT_ENCODING = 'utf-8'
+    PREPROCESS_FOV_DEGREE = 110.0
+    PREPROCESS_VELOCITY_THRESHOLD = 200.0
+    PREPROCESS_Z_SCORE_THRESHOLD = 3.0
+
     # ==================== RQA分析配置 ====================
     # RQA参数默认值
     RQA_DEFAULT_PARAMS = {
