@@ -18,13 +18,15 @@ def project_root():
     """返回项目根目录的绝对路径，用于构造数据与模块的查找路径"""
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-def data_dir(*parts):
-    """拼接 `data/` 子目录的路径，例如 `data_dir('control_processed')`"""
+def processed_dir(*parts):
+    return os.path.join(project_root(), "lsh_eye_analysis", "data", "data_processed", *parts)
+
+def assets_dir(*parts):
     return os.path.join(project_root(), "data", *parts)
 
 def load_background_image(q_num):
     """加载题目 Q{q_num} 的背景图，若不存在返回 `None`"""
-    p = data_dir("background_images", f"Q{q_num}.jpg")
+    p = assets_dir("background_images", f"Q{q_num}.jpg")
     if not os.path.exists(p):
         return None
     img = Image.open(p).convert("RGB")  # 背景图用 RGB，便于保存为 JPG
@@ -200,7 +202,7 @@ def visualize_five_backgrounds():
 
 def pick_random_processed_file(group_type):
     """从 `data/{group}_processed` 随机挑选一个未校准的 `_preprocessed.csv` 文件"""
-    root = data_dir(f"{group_type}_processed")
+    root = processed_dir(f"{group_type}_processed")
     if not os.path.exists(root):
         return None
     group_folders = [os.path.join(root, d) for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
@@ -234,7 +236,7 @@ def pick_random_subject_folder(group_type, require_complete=True):
     """从指定组随机选择一个受试者文件夹。
     当 `require_complete=True` 时仅返回同时具备 Q1–Q5 的受试者。
     """
-    root = data_dir(f"{group_type}_processed")
+    root = processed_dir(f"{group_type}_processed")
     if not os.path.exists(root):
         return None
     candidates = [os.path.join(root, d) for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
