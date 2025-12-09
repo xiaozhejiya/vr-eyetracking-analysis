@@ -16,8 +16,17 @@ from scipy import stats
 
 # 添加项目根目录到路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from config.config import *
+from config.settings import Config
 from data_processing.custom_vr_parser import parse_custom_vr_format
+
+# 加载配置参数
+INPUT_ENCODING = Config.PREPROCESS_INPUT_ENCODING
+OUTPUT_ENCODING = Config.PREPROCESS_OUTPUT_ENCODING
+FOV_DEGREE = Config.PREPROCESS_FOV_DEGREE
+VELOCITY_THRESHOLD = Config.PREPROCESS_VELOCITY_THRESHOLD
+STATISTICS_CONFIG = {
+    'z_score_threshold': Config.PREPROCESS_Z_SCORE_THRESHOLD
+}
 
 def parse_new_format(content: str) -> List[Dict]:
     """
