@@ -8,7 +8,7 @@ def project_root():
 
 sys.path.append(project_root())
 
-from lsh_eye_analysis.data_processing.vr_eyetracking_processor import process_directory
+from data_processing.vr_eyetracking_processor import process_directory
 
 if __name__ == "__main__":
     if os.environ.get('SYNC_LEGACY_PROCESSED') == '1':

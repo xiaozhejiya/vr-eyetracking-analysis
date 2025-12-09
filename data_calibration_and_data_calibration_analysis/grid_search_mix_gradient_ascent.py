@@ -21,8 +21,8 @@ def project_root():
 
 # Add project root to sys.path to allow imports from lsh_eye_analysis
 sys.path.append(project_root())
-from lsh_eye_analysis.utils.score_function import calculate_score_and_metrics, apply_offset, calculate_score_grid, get_dt
-from lsh_eye_analysis.utils.CosineWarmupDecay import CosineWarmupDecay
+from utils.score_function import calculate_score_and_metrics, apply_offset, calculate_score_grid, get_dt
+from utils.CosineWarmupDecay import CosineWarmupDecay
 
 
 def import_event_analyzer():
