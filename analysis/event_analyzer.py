@@ -250,12 +250,21 @@ class EventAnalyzer:
         return amp, mxv, mmv
     
     def calc_fixation_feature(self, df, st_i, ed_i):
-        """计算fixation特征"""
+        """计算fixation特征: 幅度(位移) 和 重心坐标"""
         if st_i > ed_i:
-            return 0
+            return 0, 0, 0
+        
+        # 幅度: 起点到终点的位移
         x1, y1 = df.at[st_i, "x_deg"], df.at[st_i, "y_deg"]
         x2, y2 = df.at[ed_i, "x_deg"], df.at[ed_i, "y_deg"]
-        return math.sqrt((x2-x1)**2 + (y2-y1)**2)
+        amp = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+        
+        # 重心: 平均位置
+        sub = df.iloc[st_i:ed_i+1]
+        mx = sub["x_deg"].mean()
+        my = sub["y_deg"].mean()
+        
+        return amp, mx, my
     
     def majority_roi_for_event(self, df, st_i, ed_i, roi_kw, roi_inst, roi_bg):
         """为事件找到主要ROI"""
@@ -275,7 +284,7 @@ class EventAnalyzer:
         
         # 处理fixations
         for (st, ed, dur) in fixs:
-            amp = self.calc_fixation_feature(df, st, ed)
+            amp, mx, my = self.calc_fixation_feature(df, st, ed)
             r_ = self.majority_roi_for_event(df, st, ed, roi_kw, roi_inst, roi_bg)
             rows.append({
                 "ADQ_ID": adq_id,
@@ -284,6 +293,8 @@ class EventAnalyzer:
                 "EndIndex": ed,
                 "Duration_ms": dur,
                 "Amplitude_deg": amp,
+                "MeanX": mx,
+                "MeanY": my,
                 "MaxVel": None,
                 "MeanVel": None,
                 "ROI": r_
@@ -299,6 +310,8 @@ class EventAnalyzer:
                 "EndIndex": ed,
                 "Duration_ms": dur,
                 "Amplitude_deg": amp,
+                "MeanX": None,
+                "MeanY": None,
                 "MaxVel": mxv,
                 "MeanVel": mmv,
                 "ROI": None
