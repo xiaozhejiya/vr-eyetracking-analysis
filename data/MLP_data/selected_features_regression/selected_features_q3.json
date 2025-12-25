@@ -1,0 +1,48 @@
+{
+    "target": "q3_score",
+    "initial_count": 16,
+    "after_roi_crop_count": 16,
+    "after_corr_count": 15,
+    "dropped_roi": [
+        "kw_fix_duration_ms",
+        "inst_fix_duration_ms",
+        "bg_fix_duration_ms",
+        "bg_time_ratio"
+    ],
+    "dropped_correlation": [
+        "saccade_meanvel_mean"
+    ],
+    "selected_features": [
+        "saccade_duration_ms",
+        "saccade_count",
+        "fixation_count"
+    ],
+    "selection_method": "elasticnet",
+    "cv_metrics": {
+        "r2": -0.0893698988933593,
+        "mae": 0.26482388058213024,
+        "baseline_mae": 0.29751134533743234,
+        "method": "elasticnet"
+    },
+    "eval_model": "RidgeCV_Pipeline_Stratified",
+    "elasticnet_params": {
+        "alpha": 0.38535285937105274,
+        "l1_ratio": 0.1,
+        "cv": "StratifiedKFold(n_splits=5, by_group)"
+    },
+    "target_distribution": {
+        "mean": 2.824561403508772,
+        "std": 0.3803418138364702,
+        "min": 2.0,
+        "max": 3.0,
+        "n_unique": 2,
+        "most_common_value": 3.0,
+        "most_common_count": 47,
+        "most_common_pct": 82.45614035087719,
+        "warnings": [
+            "目标分布高度不均：82.5% 的样本值为 3.0",
+            "目标变量仅有 2 个唯一值，可能更适合分类任务"
+        ],
+        "is_problematic": true
+    }
+}

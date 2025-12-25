@@ -1,0 +1,46 @@
+{
+    "target": "q4_score",
+    "initial_count": 16,
+    "after_roi_crop_count": 16,
+    "after_corr_count": 14,
+    "dropped_roi": [
+        "kw_fix_duration_ms",
+        "inst_fix_duration_ms",
+        "bg_fix_duration_ms",
+        "bg_time_ratio"
+    ],
+    "dropped_correlation": [
+        "saccade_meanvel_mean",
+        "ENT_1D_x"
+    ],
+    "selected_features": [
+        "kw_time_ratio",
+        "saccade_maxvel_mean",
+        "DET_1D_x"
+    ],
+    "selection_method": "elasticnet",
+    "cv_metrics": {
+        "r2": 0.15195876560730487,
+        "mae": 0.9299041081691666,
+        "baseline_mae": 1.1099619382228079,
+        "method": "elasticnet"
+    },
+    "eval_model": "RidgeCV_Pipeline_Stratified",
+    "elasticnet_params": {
+        "alpha": 0.2420128264794381,
+        "l1_ratio": 1.0,
+        "cv": "StratifiedKFold(n_splits=5, by_group)"
+    },
+    "target_distribution": {
+        "mean": 2.982456140350877,
+        "std": 1.3310229290098707,
+        "min": 0.0,
+        "max": 5.0,
+        "n_unique": 6,
+        "most_common_value": 2.0,
+        "most_common_count": 17,
+        "most_common_pct": 29.82456140350877,
+        "warnings": [],
+        "is_problematic": false
+    }
+}
