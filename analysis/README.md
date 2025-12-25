@@ -65,6 +65,12 @@
 - 输出：`data/MLP_data/features/merged_features/<group>_group/<group>_q{1..5}.csv`
   - 列包含事件特征与 RQA 指标，适合直接用于模型训练。
 
+## 特征筛选
+- 脚本：`analysis/feature_selection_pipeline.py`
+- 用途：对合并后的特征进行两步筛选（去共线性 -> 随机森林重要性排序），并保存 Top 20 特征列表。
+- 用法：`python analysis/feature_selection_pipeline.py`
+- 输出：`data/MLP_data/selected_features/selected_features_q{1..5}.json`
+
 ## 推荐工作流
 1. 选择校准源并导出事件：
    - `python analysis/export_events_for_mlp.py --groups control,mci,ad --calibrated-dir-name data_calibration_mix`
