@@ -5,11 +5,10 @@ import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LassoCV, RidgeCV, ElasticNetCV
-from sklearn.model_selection import KFold, cross_val_score, StratifiedKFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.dummy import DummyRegressor
 import matplotlib.pyplot as plt
 import seaborn as sns
 import re
@@ -276,29 +275,31 @@ def check_target_distribution(y, target_name):
     return is_problematic, info
 
 
-def evaluate_subset_regressor(X, y, feature_names, model_type='rf', cv=None):
+def evaluate_subset_regressor(X, y, feature_names, model_type='rf', cv=None, score_range=None):
     """
     使用交叉验证评估回归效果 (R^2 Score 和 MAE)
+
+    参数:
+        score_range: (min, max) 元组，用于将预测值裁剪并四舍五入到合法分值范围
     """
     if not feature_names:
         print("  [警告] 特征列表为空，跳过评估")
-        return np.nan, np.nan
-        
-    X_subset = X[feature_names]
-    
+        return np.nan, np.nan, np.nan
+
+    X_subset = X[feature_names].values
+    y_vals = y.values if hasattr(y, 'values') else y
+
     # 交叉验证策略
     if cv is None:
         cv = KFold(n_splits=5, shuffle=True, random_state=42)
-    
+
     # 构建 Pipeline 以防止数据泄露
-    # 大多数回归模型需要标准化，RF 不需要但也不受害
     steps = [
         ('imputer', SimpleImputer(strategy='mean')),
         ('scaler', StandardScaler())
     ]
-    
+
     if model_type == 'rf':
-        # RF 不需要 StandardScaler，可以只用 Imputer
         steps = [('imputer', SimpleImputer(strategy='mean'))]
         model = RandomForestRegressor(n_estimators=100, random_state=42)
     elif model_type == 'lasso':
@@ -307,27 +308,63 @@ def evaluate_subset_regressor(X, y, feature_names, model_type='rf', cv=None):
         model = RidgeCV(alphas=[0.01, 0.1, 1.0, 10.0, 100.0])
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
-    
+
     pipeline = Pipeline(steps + [('model', model)])
-    
-    # 计算 R2
-    r2_scores = cross_val_score(pipeline, X_subset, y, cv=cv, scoring='r2')
-    # 计算 MAE (Negative MAE, so flip sign)
-    mae_scores = cross_val_score(pipeline, X_subset, y, cv=cv, scoring='neg_mean_absolute_error')
-    
-    return r2_scores.mean(), -mae_scores.mean()
+
+    # 手动交叉验证以支持离散化后的 MAE
+    r2_scores = []
+    mae_raw_scores = []
+    mae_discrete_scores = []
+
+    cv_iter = cv if isinstance(cv, list) else list(cv.split(X_subset, y_vals))
+
+    for train_idx, test_idx in cv_iter:
+        X_train, X_test = X_subset[train_idx], X_subset[test_idx]
+        y_train, y_test = y_vals[train_idx], y_vals[test_idx]
+
+        pipeline.fit(X_train, y_train)
+        y_pred = pipeline.predict(X_test)
+
+        # R² 计算
+        ss_res = np.sum((y_test - y_pred) ** 2)
+        ss_tot = np.sum((y_test - np.mean(y_test)) ** 2)
+        r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        r2_scores.append(r2)
+
+        # 原始 MAE
+        mae_raw = np.mean(np.abs(y_test - y_pred))
+        mae_raw_scores.append(mae_raw)
+
+        # 离散化后的 MAE
+        if score_range is not None:
+            y_pred_discrete = np.clip(y_pred, score_range[0], score_range[1])
+            y_pred_discrete = np.round(y_pred_discrete)
+            mae_discrete = np.mean(np.abs(y_test - y_pred_discrete))
+        else:
+            mae_discrete = mae_raw
+        mae_discrete_scores.append(mae_discrete)
+
+    return np.mean(r2_scores), np.mean(mae_raw_scores), np.mean(mae_discrete_scores)
 
 def main():
     output_dir = os.path.join(project_root(), "data", "MLP_data", "selected_features_regression")
     os.makedirs(output_dir, exist_ok=True)
-    
+
+    # 各问题的合法分值范围 (min, max)
+    SCORE_RANGES = {
+        1: (0, 5),   # Q1 时间定向: 年份+季节+月份+星期
+        2: (0, 5),   # Q2 空间定向: 省市区+街道+建筑+楼层
+        3: (0, 3),   # Q3 即刻记忆
+        4: (0, 5),   # Q4 注意与计算
+        5: (0, 3),   # Q5 延迟回忆
+    }
+
     # 1. 预先加载并计算好所有受试者的 MMSE 分数
     print("正在加载并解析 MMSE 评分数据...")
     mmse_df = load_mmse_scores()
     print(f"共加载了 {len(mmse_df)} 名受试者的 MMSE 分数。")
-    
-    exclude_cols = ['group', 'subject', 'q', 'label', 'ROI_CAT', 
-                    'q1_score', 'q2_score', 'q3_score', 'q4_score', 'q5_score', 'total_score'] 
+    exclude_cols = ['group', 'subject', 'q', 'label', 'ROI_CAT',
+                    'q1_score', 'q2_score', 'q3_score', 'q4_score', 'q5_score', 'total_score']
 
     for q in range(1, 6):
         print(f"\n{'='*50}")
@@ -367,7 +404,7 @@ def main():
               f"unique={target_info['n_unique']}, range=[{target_info['min']:.0f}, {target_info['max']:.0f}]")
         if is_problematic:
             for warn in target_info['warnings']:
-                print(f"  ⚠️  {warn}")
+                print(f"  [!] {warn}")
         
         # --- 2.2 构建分层 CV (Stratified CV) ---
         # 从 subject ID 中提取 group (例如 'ad_group_1' -> 'ad')
@@ -379,7 +416,13 @@ def main():
         # --- 2.3 数据预处理 (用于特征筛选步骤) ---
         # 注意：这里的 imputed/scaled 数据仅用于计算相关性和 RF/Lasso 筛选特征
         # 最终评估时会使用 Pipeline 在 CV 内部重新处理，避免泄露
-        
+
+        # 移除全 NaN 的列（无法用均值填充）
+        all_nan_cols = X.columns[X.isna().all()].tolist()
+        if all_nan_cols:
+            print(f"移除全 NaN 的特征: {all_nan_cols}")
+            X = X.drop(columns=all_nan_cols)
+
         imputer_global = SimpleImputer(strategy='mean')
         X_imputed_val = imputer_global.fit_transform(X)
         X_imputed_df = pd.DataFrame(X_imputed_val, columns=X.columns)
@@ -406,32 +449,66 @@ def main():
         
         enet_feats_top = enet_feats[:N_FEATURES]
         print(f"  ElasticNet 选出的 Top {len(enet_feats_top)} 特征: {enet_feats_top[:5]}...")
-        
-        # 统一使用 RidgeCV + Pipeline + StratifiedCV 评估
-        r2, mae = evaluate_subset_regressor(X, y, enet_feats_top, model_type='ridge', cv=cv_splits)
 
-        # 计算基线（DummyRegressor 预测均值）的 MAE 作为参考
-        dummy = DummyRegressor(strategy='mean')
-        dummy_mae_scores = cross_val_score(dummy, X[enet_feats_top] if enet_feats_top else X.iloc[:, :1],
-                                           y, cv=cv_splits, scoring='neg_mean_absolute_error')
-        baseline_mae = -dummy_mae_scores.mean()
+        # 获取当前问题的分值范围
+        score_range = SCORE_RANGES[q]
+
+        # 统一使用 RidgeCV + Pipeline + StratifiedCV 评估
+        r2, mae_raw, mae_discrete = evaluate_subset_regressor(
+            X, y, enet_feats_top, model_type='ridge', cv=cv_splits, score_range=score_range
+        )
+
+        # 计算基线 MAE
+        y_vals = y.values if hasattr(y, 'values') else y
+        y_mean = np.mean(y_vals)
+        y_median = np.median(y_vals)
+
+        # Mean baseline MAE (用于 R² 对标)
+        baseline_mae_mean = np.mean(np.abs(y_vals - y_mean))
+
+        # Median baseline MAE (更公平的 MAE 基线)
+        baseline_mae_median = np.mean(np.abs(y_vals - y_median))
+
+        # 离散化后的 baseline MAE
+        y_mean_discrete = np.clip(np.round(y_mean), score_range[0], score_range[1])
+        y_median_discrete = np.clip(np.round(y_median), score_range[0], score_range[1])
+        baseline_mae_mean_discrete = np.mean(np.abs(y_vals - y_mean_discrete))
+        baseline_mae_median_discrete = np.mean(np.abs(y_vals - y_median_discrete))
 
         r2_display = f"{r2:.4f}" if not np.isnan(r2) else "N/A"
-        mae_display = f"{mae:.4f}" if not np.isnan(mae) else "N/A"
-        print(f"  [统一评估] ElasticNet 特征集 (RidgeCV) -> R^2: {r2_display}, MAE: {mae_display}")
-        print(f"  [基线参考] 预测均值的 MAE: {baseline_mae:.4f}")
+        mae_raw_display = f"{mae_raw:.4f}" if not np.isnan(mae_raw) else "N/A"
+        mae_discrete_display = f"{mae_discrete:.4f}" if not np.isnan(mae_discrete) else "N/A"
+
+        print(f"  [统一评估] ElasticNet 特征集 (RidgeCV):")
+        print(f"      R^2: {r2_display}")
+        print(f"      MAE (原始): {mae_raw_display}")
+        print(f"      MAE (离散化到 {score_range}): {mae_discrete_display}")
+        print(f"  [基线参考]")
+        print(f"      Mean baseline  -> MAE: {baseline_mae_mean:.4f}, 离散化: {baseline_mae_mean_discrete:.4f}")
+        print(f"      Median baseline -> MAE: {baseline_mae_median:.4f}, 离散化: {baseline_mae_median_discrete:.4f}")
 
         if not np.isnan(r2) and r2 < 0:
-            print(f"  ⚠️  R² 为负数，模型表现不如预测均值，可能因为：")
+            print(f"  [!] R^2 为负数，模型表现不如预测均值，可能因为：")
             print(f"      - 目标变量方差过小或分布高度不均")
             print(f"      - 特征与目标之间缺乏线性关系")
             print(f"      - 样本量过小导致交叉验证不稳定")
-        
+
         final_feats = enet_feats_top
         # 处理 NaN 值 (JSON 不支持 NaN)
         r2_safe = None if np.isnan(r2) else float(r2)
-        mae_safe = None if np.isnan(mae) else float(mae)
-        final_metrics = {"r2": r2_safe, "mae": mae_safe, "baseline_mae": float(baseline_mae), "method": "elasticnet"}
+        mae_raw_safe = None if np.isnan(mae_raw) else float(mae_raw)
+        mae_discrete_safe = None if np.isnan(mae_discrete) else float(mae_discrete)
+        final_metrics = {
+            "r2": r2_safe,
+            "mae_raw": mae_raw_safe,
+            "mae_discrete": mae_discrete_safe,
+            "baseline_mae_mean": float(baseline_mae_mean),
+            "baseline_mae_median": float(baseline_mae_median),
+            "baseline_mae_mean_discrete": float(baseline_mae_mean_discrete),
+            "baseline_mae_median_discrete": float(baseline_mae_median_discrete),
+            "score_range": list(score_range),
+            "method": "elasticnet"
+        }
             
         print("最终选定特征列表：")
         for i, f in enumerate(final_feats):

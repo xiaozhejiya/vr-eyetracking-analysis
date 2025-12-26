@@ -101,12 +101,14 @@ def aggregate_subject(df):
     sc_cnt = int(len(sc))
 
     # 注视/扫视振幅均值（度）
-    fx_amp_mean = float(fx["Amplitude_deg"].mean()) if len(fx) else np.nan
-    sc_amp_mean = float(sc["Amplitude_deg"].mean()) if len(sc) else np.nan
+    # 如果没有注视点/扫视点，振幅均值应为 0.0 而不是 NaN，以便后续模型处理
+    fx_amp_mean = float(fx["Amplitude_deg"].mean()) if len(fx) > 0 else 0.0
+    sc_amp_mean = float(sc["Amplitude_deg"].mean()) if len(sc) > 0 else 0.0
 
     # 扫视的最大速度与平均速度均值
-    sc_maxvel_mean = float(sc["MaxVel"].mean()) if len(sc) else np.nan
-    sc_meanvel_mean = float(sc["MeanVel"].mean()) if len(sc) else np.nan
+    # 同样处理空值，若无扫视则速度为 0.0
+    sc_maxvel_mean = float(sc["MaxVel"].mean()) if len(sc) > 0 else 0.0
+    sc_meanvel_mean = float(sc["MeanVel"].mean()) if len(sc) > 0 else 0.0
 
     # --- 2. ROI 关注度 ---
     kw_fx_dur = float(fx[fx["ROI_CAT"] == "KW"]["Duration_ms"].sum()) if len(fx) else 0.0
@@ -124,13 +126,18 @@ def aggregate_subject(df):
     if len(kw_indices) > 0:
         first_kw_idx = kw_indices[0]
         # 计算该事件之前所有事件的总时长 (估算延迟)
-        # 注意：这里假设 StartIndex 对应的相对时间可以用累积时长近似，
-        # 或者更准确地，如果 StartIndex 是数据点索引，采样率约 60Hz (16.67ms/sample)
-        # 但我们没有采样率信息，且可能有数据丢失/眨眼。
-        # 最稳妥是用 StartIndex * 16.67ms (假设60Hz) 或者 累积 Duration
-        # 这里使用累积 Duration 作为近似
         pre_events = df.iloc[:first_kw_idx]
         ttff_ms = float(pre_events["Duration_ms"].sum())
+        # 如果 ttff_ms 为 0 (说明第一个事件就是 KW)，将其设为第一个事件持续时间的一半作为近似，
+        # 或者设为一个很小的值，避免被误认为“缺失”或“瞬间完成”。
+        # 更好的做法是加上第一个 KW fixation 开始的时间点（如果有 StartIndex）。
+        # 如果没有 StartIndex 只有 Duration，且 ttff_ms=0，说明一上来就看 KW。
+        # 这种情况下 ttff_ms=0 是物理意义上正确的（相对于记录开始）。
+        # 但为了避免后续统计问题，我们保持 0.0，或者如果业务认为 0 不合理，可以加上首个事件的 start_time (如果非0)
+    else:
+        # 如果从未注视 KW，TTFF 应为 NaN 或 任务最大时长 (total_dur)
+        # 建议设为 total_dur，表示“直到结束才（可能）看到”，或者保持 np.nan
+        pass
     
     # --- 4. ROI 转移 (Transitions) ---
     # 提取 fixation 的 ROI 序列 (忽略 None/Other 如果需要，这里保留)
@@ -152,9 +159,6 @@ def aggregate_subject(df):
     total_trans = 0
     revisit_kw_count = 0
     
-    last_kw_index = -1
-    kw_visit_intervals = []
-
     for i in range(len(collapsed_seq) - 1):
         src, dst = collapsed_seq[i], collapsed_seq[i+1]
         key = f"{src}_to_{dst}"
@@ -166,38 +170,18 @@ def aggregate_subject(df):
         if dst == "KW" and src != "KW":
             revisit_kw_count += 1
             
-            # 计算间隔 (简单估算: 两个 visit 之间的索引差? 不，应该用时间)
-            # 由于 collapsed_seq 丢失了时间信息，这里较难精确计算 interval
-            # 我们改用原始 fx 列表来计算 interval
-            pass
-
-    # 计算 Revisit Interval (基于原始 fixation 列表)
-    # 找到所有 KW fixation 的段
-    kw_fix_segments = [] # [(start_time, end_time), ...]
-    curr_start = 0.0
-    for _, row in df.iterrows():
-        dur = row["Duration_ms"]
-        if row["EventType"] == "fixation" and row["ROI_CAT"] == "KW":
-            kw_fix_segments.append((curr_start, curr_start + dur))
-        curr_start += dur
-    
-    # 合并连续的时间段 (因为可能有连续的 KW fixations)
-    merged_kw_seg = []
-    if kw_fix_segments:
-        curr_seg = kw_fix_segments[0]
-        for next_seg in kw_fix_segments[1:]:
-            # 如果中间间隔很小 (比如只隔了一个短 saccade?) 
-            # 简单起见，只要是时间上断开就算一次新的 visit
-            # 但我们只关心 "Revisit"，即中间去过别的地方
-            # 上面的 collapsed_seq 已经定义了 "去过别的地方"
-            pass
-            
     # 简化版 Revisit Interval: (Total Duration - Total KW Duration) / Revisit Count
     # 这代表了 "平均每次离开 KW 后多久回来"
-    avg_revisit_interval = np.nan
+    # 如果 revisit_kw_count = 0，该值应为 NaN 还是 0？
+    # 物理意义上，如果从未离开或从未回来，间隔是未定义的。
+    # 但为了模型输入不报错，我们可以填 0.0 (表示无间隔/无回视行为) 
+    # 或者填 total_dur (表示间隔无限大)
+    # 用户要求 "avg_revisit_interval 为空的值这个值不应该为空，应该等于0"
     if revisit_kw_count > 0:
         other_dur = total_dur - kw_fx_dur
         avg_revisit_interval = other_dur / revisit_kw_count
+    else:
+        avg_revisit_interval = 0.0 # 根据用户要求填充为 0
 
     # --- 5. 空间离散度与扫描路径 ---
     # Scanpath Length: 所有 Saccade 的幅度之和
