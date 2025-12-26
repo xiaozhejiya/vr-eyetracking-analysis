@@ -1,8 +1,8 @@
 {
     "target": "q3_score",
-    "initial_count": 16,
-    "after_roi_crop_count": 16,
-    "after_corr_count": 15,
+    "initial_count": 24,
+    "after_roi_crop_count": 24,
+    "after_corr_count": 23,
     "dropped_roi": [
         "kw_fix_duration_ms",
         "inst_fix_duration_ms",
@@ -13,20 +13,29 @@
         "saccade_meanvel_mean"
     ],
     "selected_features": [
-        "saccade_duration_ms",
+        "scanpath_length",
         "saccade_count",
-        "fixation_count"
+        "fixation_count",
+        "avg_revisit_interval"
     ],
     "selection_method": "elasticnet",
     "cv_metrics": {
-        "r2": -0.0893698988933593,
-        "mae": 0.26482388058213024,
-        "baseline_mae": 0.29751134533743234,
+        "r2": -0.06485664452658883,
+        "mae_raw": 0.262214831508112,
+        "mae_discrete": 0.20757575757575758,
+        "baseline_mae_mean": 0.2893197907048323,
+        "baseline_mae_median": 0.17543859649122806,
+        "baseline_mae_mean_discrete": 0.17543859649122806,
+        "baseline_mae_median_discrete": 0.17543859649122806,
+        "score_range": [
+            0,
+            3
+        ],
         "method": "elasticnet"
     },
     "eval_model": "RidgeCV_Pipeline_Stratified",
     "elasticnet_params": {
-        "alpha": 0.38535285937105274,
+        "alpha": 0.4328761281083057,
         "l1_ratio": 0.1,
         "cv": "StratifiedKFold(n_splits=5, by_group)"
     },
