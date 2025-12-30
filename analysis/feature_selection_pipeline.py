@@ -4,8 +4,9 @@ import json
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LassoCV, RidgeCV, ElasticNetCV
+from sklearn.linear_model import LassoCV, RidgeCV, ElasticNetCV, LogisticRegressionCV, LogisticRegression
 from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -233,6 +234,98 @@ def select_features_elasticnet(X, y, cv=None, min_features=2):
 
     return selected_features, importances, enet.alpha_, enet.l1_ratio_
 
+
+def stability_selection_classification(X, y_binary, n_bootstrap=50, sample_ratio=0.7,
+                                        threshold=0.6, min_features=3, max_features=6):
+    """
+    使用稳定性选择 (Stability Selection) 进行分类特征筛选。
+
+    原理：在多个 bootstrap 样本上运行 L1 正则化的 Logistic 回归，
+    统计每个特征被选中的频率，选择频率高于阈值的特征。
+
+    参数:
+        X: 特征 DataFrame (已标准化)
+        y_binary: 二分类标签 (0/1)
+        n_bootstrap: bootstrap 采样次数
+        sample_ratio: 每次采样的样本比例
+        threshold: 特征被选中的频率阈值 (默认 0.6，即 60% 的采样中被选中)
+        min_features: 最少选择的特征数
+        max_features: 最多选择的特征数
+
+    返回:
+        selected_features: 稳定特征列表
+        selection_freq: 各特征的选择频率字典
+    """
+    n_samples, n_features = X.shape
+    feature_names = X.columns.tolist()
+
+    # 记录每个特征被选中的次数
+    selection_counts = np.zeros(n_features)
+
+    # 使用多个 alpha 值增加多样性
+    alphas = [0.01, 0.05, 0.1, 0.5, 1.0]
+
+    for i in range(n_bootstrap):
+        # Bootstrap 采样
+        np.random.seed(i)
+        sample_size = int(n_samples * sample_ratio)
+        sample_idx = np.random.choice(n_samples, size=sample_size, replace=False)
+
+        X_sample = X.iloc[sample_idx].values
+        y_sample = y_binary[sample_idx]
+
+        # 检查是否两个类都有样本
+        if len(np.unique(y_sample)) < 2:
+            continue
+
+        # 随机选择一个 alpha
+        alpha = alphas[i % len(alphas)]
+
+        try:
+            # L1 正则化的 Logistic 回归
+            clf = LogisticRegression(
+                penalty='l1',
+                solver='saga',
+                C=1.0/alpha,  # sklearn 中 C = 1/alpha
+                max_iter=5000,
+                random_state=i,
+                class_weight='balanced'
+            )
+            clf.fit(X_sample, y_sample)
+
+            # 记录非零系数的特征
+            non_zero_idx = np.where(np.abs(clf.coef_[0]) > 1e-5)[0]
+            selection_counts[non_zero_idx] += 1
+        except Exception as e:
+            continue
+
+    # 计算选择频率
+    selection_freq = selection_counts / n_bootstrap
+    freq_dict = {feature_names[i]: selection_freq[i] for i in range(n_features)}
+
+    # 按频率排序
+    sorted_features = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)
+
+    # 选择频率高于阈值的特征
+    stable_features = [f for f, freq in sorted_features if freq >= threshold]
+
+    # 如果稳定特征太少，降低阈值或取 top-K
+    if len(stable_features) < min_features:
+        stable_features = [f for f, _ in sorted_features[:min_features]]
+        print(f"  [稳定性选择] 阈值 {threshold} 下仅有 {len([f for f, freq in sorted_features if freq >= threshold])} 个特征，"
+              f"自动选取 Top {min_features}")
+
+    # 如果稳定特征太多，截取
+    if len(stable_features) > max_features:
+        stable_features = stable_features[:max_features]
+
+    print(f"  [稳定性选择] 结果 (n_bootstrap={n_bootstrap}, threshold={threshold}):")
+    for f in stable_features:
+        print(f"    - {f}: {freq_dict[f]*100:.1f}%")
+
+    return stable_features, freq_dict
+
+
 def check_target_distribution(y, target_name):
     """
     检查目标变量的分布，并给出警告。
@@ -345,6 +438,143 @@ def evaluate_subset_regressor(X, y, feature_names, model_type='rf', cv=None, sco
         mae_discrete_scores.append(mae_discrete)
 
     return np.mean(r2_scores), np.mean(mae_raw_scores), np.mean(mae_discrete_scores)
+
+
+def evaluate_two_stage_model(X, y, feature_names, cv=None, max_score=5, cls_threshold=0.5,
+                              reg_feature_names=None):
+    """
+    两阶段模型评估（分类+回归）:
+    - Head1: 二分类预测是否满分
+    - Head2: 在非满分样本上回归缺失分 d = max_score - y
+
+    参数:
+        X: 特征 DataFrame
+        y: 目标变量 (原始分数)
+        feature_names: 分类阶段使用的特征列表 (共享特征)
+        cv: 交叉验证策略
+        max_score: 满分值 (默认 5)
+        cls_threshold: 分类阈值 (默认 0.5)
+        reg_feature_names: 回归阶段使用的特征列表，默认与分类相同
+
+    返回:
+        metrics: 包含各项评估指标的字典
+    """
+    if not feature_names:
+        print("  [警告] 特征列表为空，跳过评估")
+        return None
+
+    # 回归阶段特征默认与分类相同
+    if reg_feature_names is None:
+        reg_feature_names = feature_names
+
+    X_cls = X[feature_names].values
+    X_reg = X[reg_feature_names].values
+    y_vals = y.values if hasattr(y, 'values') else np.array(y)
+
+    # 构建二分类标签: 是否满分
+    y_is_max = (y_vals == max_score).astype(int)
+
+    # 构建回归目标: 缺失分 d = max_score - y (仅对非满分有意义)
+    y_deficit = max_score - y_vals
+
+    cv_iter = cv if isinstance(cv, list) else list(cv.split(X_cls, y_vals))
+
+    # 记录各 fold 的指标
+    cls_accuracies = []
+    cls_f1s = []
+    cls_aucs = []
+    final_maes = []
+    final_mae_discretes = []
+
+    print(f"\n  [两阶段模型] 满分样本: {np.sum(y_is_max)}/{len(y_vals)} ({100*np.mean(y_is_max):.1f}%)")
+    if list(feature_names) != list(reg_feature_names):
+        print(f"  [两阶段模型] 分类特征: {feature_names}")
+        print(f"  [两阶段模型] 回归特征: {reg_feature_names}")
+
+    for fold_idx, (train_idx, test_idx) in enumerate(cv_iter):
+        # 分类阶段用 X_cls
+        X_cls_train, X_cls_test = X_cls[train_idx], X_cls[test_idx]
+        # 回归阶段用 X_reg
+        X_reg_train, X_reg_test = X_reg[train_idx], X_reg[test_idx]
+
+        y_train_is_max, y_test_is_max = y_is_max[train_idx], y_is_max[test_idx]
+        y_train_deficit, y_test_deficit = y_deficit[train_idx], y_deficit[test_idx]
+        y_test_true = y_vals[test_idx]
+
+        # ========== Head1: 分类器 (是否满分) ==========
+        cls_pipeline = Pipeline([
+            ('imputer', SimpleImputer(strategy='mean')),
+            ('scaler', StandardScaler()),
+            ('clf', LogisticRegressionCV(cv=3, random_state=42, max_iter=2000, class_weight='balanced'))
+        ])
+        cls_pipeline.fit(X_cls_train, y_train_is_max)
+        y_pred_proba = cls_pipeline.predict_proba(X_cls_test)[:, 1]
+        y_pred_is_max = (y_pred_proba >= cls_threshold).astype(int)
+
+        # 分类指标
+        cls_acc = accuracy_score(y_test_is_max, y_pred_is_max)
+        cls_f1 = f1_score(y_test_is_max, y_pred_is_max, zero_division=0)
+        try:
+            cls_auc = roc_auc_score(y_test_is_max, y_pred_proba)
+        except ValueError:
+            cls_auc = 0.5  # 只有一个类时
+
+        cls_accuracies.append(cls_acc)
+        cls_f1s.append(cls_f1)
+        cls_aucs.append(cls_auc)
+
+        # ========== Head2: 回归器 (缺失分) ==========
+        # 仅在训练集的非满分样本上训练
+        non_max_train_mask = y_train_is_max == 0
+        if np.sum(non_max_train_mask) < 3:
+            # 非满分样本太少，直接用均值预测
+            reg_pred_deficit = np.full(len(X_reg_test), np.mean(y_train_deficit[non_max_train_mask]) if np.sum(non_max_train_mask) > 0 else 1)
+        else:
+            reg_pipeline = Pipeline([
+                ('imputer', SimpleImputer(strategy='mean')),
+                ('scaler', StandardScaler()),
+                ('reg', RidgeCV(alphas=[0.01, 0.1, 1.0, 10.0, 100.0]))
+            ])
+            reg_pipeline.fit(X_reg_train[non_max_train_mask], y_train_deficit[non_max_train_mask])
+            reg_pred_deficit = reg_pipeline.predict(X_reg_test)
+
+        # ========== 两阶段融合推理 ==========
+        y_pred_final = np.zeros(len(X_cls_test))
+        for i in range(len(X_cls_test)):
+            if y_pred_proba[i] >= cls_threshold:
+                # 预测为满分
+                y_pred_final[i] = max_score
+            else:
+                # 预测为非满分，用回归结果
+                # 缺失分 d 预测后转换为分数: score = max_score - d
+                pred_deficit = np.clip(reg_pred_deficit[i], 1, max_score - 2)  # d in [1, 3] -> score in [2, 4]
+                y_pred_final[i] = max_score - pred_deficit
+
+        # 离散化
+        y_pred_discrete = np.clip(np.round(y_pred_final), max_score - 3, max_score)  # [2, 5]
+
+        # 计算 MAE
+        mae = np.mean(np.abs(y_test_true - y_pred_final))
+        mae_discrete = np.mean(np.abs(y_test_true - y_pred_discrete))
+
+        final_maes.append(mae)
+        final_mae_discretes.append(mae_discrete)
+
+    metrics = {
+        "cls_accuracy": float(np.mean(cls_accuracies)),
+        "cls_f1": float(np.mean(cls_f1s)),
+        "cls_auc": float(np.mean(cls_aucs)),
+        "mae_raw": float(np.mean(final_maes)),
+        "mae_discrete": float(np.mean(final_mae_discretes)),
+        "threshold": cls_threshold,
+        "max_score": max_score
+    }
+
+    print(f"  [Head1 分类] Acc: {metrics['cls_accuracy']:.4f}, F1: {metrics['cls_f1']:.4f}, AUC: {metrics['cls_auc']:.4f}")
+    print(f"  [两阶段融合] MAE (原始): {metrics['mae_raw']:.4f}, MAE (离散化): {metrics['mae_discrete']:.4f}")
+
+    return metrics
+
 
 def main():
     output_dir = os.path.join(project_root(), "data", "MLP_data", "selected_features_regression")
@@ -493,7 +723,46 @@ def main():
             print(f"      - 特征与目标之间缺乏线性关系")
             print(f"      - 样本量过小导致交叉验证不稳定")
 
-        final_feats = enet_feats_top
+        # ========== Q2 特殊处理: 两阶段模型 (分类+回归) + 稳定性选择 ==========
+        two_stage_metrics = None
+        stability_info = None
+        if q == 2:
+            print(f"\n  [Q2 特殊处理] 使用稳定性选择筛选两阶段模型特征")
+
+            # 构建二分类标签: 是否满分 (用于稳定性选择)
+            y_is_max = (y_vals == 5).astype(int)
+
+            # 稳定性选择：在分类任务上筛选稳定特征
+            stable_feats, freq_dict = stability_selection_classification(
+                X_scaled_df[X_uncorr_df.columns],  # 使用去相关后的特征
+                y_is_max,
+                n_bootstrap=50,
+                sample_ratio=0.7,
+                threshold=0.5,  # 50% 的采样中被选中
+                min_features=3,
+                max_features=6
+            )
+
+            # 记录稳定性选择信息
+            stability_info = {
+                "method": "stability_selection_classification",
+                "n_bootstrap": 50,
+                "threshold": 0.5,
+                "stable_features": stable_feats,
+                "selection_frequencies": {f: round(freq_dict[f], 3) for f in stable_feats}
+            }
+
+            # 两阶段模型评估：分类和回归使用相同的稳定特征
+            print(f"\n  [Q2 两阶段模型] 使用稳定性选择特征 ({len(stable_feats)} 个)")
+            two_stage_metrics = evaluate_two_stage_model(
+                X, y, stable_feats, cv=cv_splits, max_score=5, cls_threshold=0.5,
+                reg_feature_names=stable_feats  # 回归阶段使用相同特征
+            )
+
+            # Q2 最终使用稳定性选择的特征
+            final_feats = stable_feats
+        else:
+            final_feats = enet_feats_top
         # 处理 NaN 值 (JSON 不支持 NaN)
         r2_safe = None if np.isnan(r2) else float(r2)
         mae_raw_safe = None if np.isnan(mae_raw) else float(mae_raw)
@@ -507,8 +776,14 @@ def main():
             "baseline_mae_mean_discrete": float(baseline_mae_mean_discrete),
             "baseline_mae_median_discrete": float(baseline_mae_median_discrete),
             "score_range": list(score_range),
-            "method": "elasticnet"
+            "method": "stability_selection" if q == 2 else "elasticnet"
         }
+
+        # 如果是 Q2，添加两阶段模型指标和稳定性选择信息
+        if two_stage_metrics is not None:
+            final_metrics["two_stage"] = two_stage_metrics
+        if stability_info is not None:
+            final_metrics["stability_selection"] = stability_info
             
         print("最终选定特征列表：")
         for i, f in enumerate(final_feats):
@@ -530,14 +805,24 @@ def main():
             "selected_features": final_feats,
             "selection_method": final_metrics["method"],
             "cv_metrics": final_metrics,
-            "eval_model": "RidgeCV_Pipeline_Stratified",
-            "elasticnet_params": {
+            "eval_model": "TwoStage_Stability" if q == 2 else "RidgeCV_Pipeline_Stratified",
+            "target_distribution": target_info_safe
+        }
+
+        # Q2 使用稳定性选择，其他问题使用 ElasticNet
+        if q == 2:
+            result["stability_selection_params"] = {
+                "n_bootstrap": 50,
+                "sample_ratio": 0.7,
+                "threshold": 0.5,
+                "cv": "StratifiedKFold(n_splits=5, by_group)"
+            }
+        else:
+            result["elasticnet_params"] = {
                 "alpha": float(best_alpha),
                 "l1_ratio": float(best_l1_ratio),
                 "cv": "StratifiedKFold(n_splits=5, by_group)"
-            },
-            "target_distribution": target_info_safe
-        }
+            }
         
         out_file = os.path.join(output_dir, f"selected_features_q{q}.json")
         with open(out_file, 'w', encoding='utf-8') as f:

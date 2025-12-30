@@ -34,11 +34,6 @@
         "method": "elasticnet"
     },
     "eval_model": "RidgeCV_Pipeline_Stratified",
-    "elasticnet_params": {
-        "alpha": 0.4328761281083057,
-        "l1_ratio": 0.1,
-        "cv": "StratifiedKFold(n_splits=5, by_group)"
-    },
     "target_distribution": {
         "mean": 2.824561403508772,
         "std": 0.3803418138364702,
@@ -53,5 +48,10 @@
             "目标变量仅有 2 个唯一值，可能更适合分类任务"
         ],
         "is_problematic": true
+    },
+    "elasticnet_params": {
+        "alpha": 0.4328761281083057,
+        "l1_ratio": 0.1,
+        "cv": "StratifiedKFold(n_splits=5, by_group)"
     }
 }

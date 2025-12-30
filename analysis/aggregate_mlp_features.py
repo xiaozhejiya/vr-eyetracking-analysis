@@ -121,23 +121,20 @@ def aggregate_subject(df):
 
     # --- 3. 首注视时间 (TTFF) ---
     # 找到第一个落在 KW 区域的 fixation
-    ttff_ms = np.nan
+    ttff_ms = 0.0
+    ttff_is_missing = 0  # 0表示存在，1表示缺失
+    
     kw_indices = df[(df["EventType"] == "fixation") & (df["ROI_CAT"] == "KW")].index
     if len(kw_indices) > 0:
         first_kw_idx = kw_indices[0]
         # 计算该事件之前所有事件的总时长 (估算延迟)
         pre_events = df.iloc[:first_kw_idx]
         ttff_ms = float(pre_events["Duration_ms"].sum())
-        # 如果 ttff_ms 为 0 (说明第一个事件就是 KW)，将其设为第一个事件持续时间的一半作为近似，
-        # 或者设为一个很小的值，避免被误认为“缺失”或“瞬间完成”。
-        # 更好的做法是加上第一个 KW fixation 开始的时间点（如果有 StartIndex）。
-        # 如果没有 StartIndex 只有 Duration，且 ttff_ms=0，说明一上来就看 KW。
-        # 这种情况下 ttff_ms=0 是物理意义上正确的（相对于记录开始）。
-        # 但为了避免后续统计问题，我们保持 0.0，或者如果业务认为 0 不合理，可以加上首个事件的 start_time (如果非0)
+        ttff_is_missing = 0
     else:
-        # 如果从未注视 KW，TTFF 应为 NaN 或 任务最大时长 (total_dur)
-        # 建议设为 total_dur，表示“直到结束才（可能）看到”，或者保持 np.nan
-        pass
+        # 如果从未注视 KW，或没有定义 KW
+        ttff_ms = 0.0
+        ttff_is_missing = 1
     
     # --- 4. ROI 转移 (Transitions) ---
     # 提取 fixation 的 ROI 序列 (忽略 None/Other 如果需要，这里保留)
@@ -217,6 +214,7 @@ def aggregate_subject(df):
         "bg_time_ratio": bg_ratio,
         # 新增指标
         "ttff_ms": ttff_ms, # 首注视时间
+        "ttff_ms_is_missing": ttff_is_missing, # 首注视时间缺失指示 (0/1)
         "scanpath_length": scanpath_length, # 扫描路径长
         "fixation_dispersion": fix_dispersion, # 空间离散度
         "revisit_kw_count": revisit_kw_count, # 回视次数

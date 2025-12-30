@@ -14,10 +14,14 @@
         "saccade_meanvel_mean"
     ],
     "selected_features": [
+        "saccade_amplitude_mean_deg",
+        "inst_time_ratio",
         "trans_kw_inst",
-        "fixation_count"
+        "avg_revisit_interval",
+        "trans_kw_bg",
+        "ttff_ms"
     ],
-    "selection_method": "elasticnet",
+    "selection_method": "stability_selection",
     "cv_metrics": {
         "r2": -0.2737567871738706,
         "mae_raw": 0.7024145906161972,
@@ -30,14 +34,39 @@
             0,
             5
         ],
-        "method": "elasticnet"
+        "method": "stability_selection",
+        "two_stage": {
+            "cls_accuracy": 0.5424242424242424,
+            "cls_f1": 0.5914535464535465,
+            "cls_auc": 0.611904761904762,
+            "mae_raw": 0.7358574877547536,
+            "mae_discrete": 0.6651515151515152,
+            "threshold": 0.5,
+            "max_score": 5
+        },
+        "stability_selection": {
+            "method": "stability_selection_classification",
+            "n_bootstrap": 50,
+            "threshold": 0.5,
+            "stable_features": [
+                "saccade_amplitude_mean_deg",
+                "inst_time_ratio",
+                "trans_kw_inst",
+                "avg_revisit_interval",
+                "trans_kw_bg",
+                "ttff_ms"
+            ],
+            "selection_frequencies": {
+                "saccade_amplitude_mean_deg": 0.96,
+                "inst_time_ratio": 0.86,
+                "trans_kw_inst": 0.86,
+                "avg_revisit_interval": 0.84,
+                "trans_kw_bg": 0.84,
+                "ttff_ms": 0.82
+            }
+        }
     },
-    "eval_model": "RidgeCV_Pipeline_Stratified",
-    "elasticnet_params": {
-        "alpha": 10.0,
-        "l1_ratio": 0.1,
-        "cv": "StratifiedKFold(n_splits=5, by_group)"
-    },
+    "eval_model": "TwoStage_Stability",
     "target_distribution": {
         "mean": 4.368421052631579,
         "std": 0.8085416576703798,
@@ -49,5 +78,11 @@
         "most_common_pct": 54.385964912280706,
         "warnings": [],
         "is_problematic": false
+    },
+    "stability_selection_params": {
+        "n_bootstrap": 50,
+        "sample_ratio": 0.7,
+        "threshold": 0.5,
+        "cv": "StratifiedKFold(n_splits=5, by_group)"
     }
 }

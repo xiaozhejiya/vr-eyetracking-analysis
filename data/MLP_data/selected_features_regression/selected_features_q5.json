@@ -33,11 +33,6 @@
         "method": "elasticnet"
     },
     "eval_model": "RidgeCV_Pipeline_Stratified",
-    "elasticnet_params": {
-        "alpha": 0.19179102616724888,
-        "l1_ratio": 1.0,
-        "cv": "StratifiedKFold(n_splits=5, by_group)"
-    },
     "target_distribution": {
         "mean": 1.6666666666666667,
         "std": 1.0651304727481081,
@@ -49,5 +44,10 @@
         "most_common_pct": 28.07017543859649,
         "warnings": [],
         "is_problematic": false
+    },
+    "elasticnet_params": {
+        "alpha": 0.19179102616724888,
+        "l1_ratio": 1.0,
+        "cv": "StratifiedKFold(n_splits=5, by_group)"
     }
 }
